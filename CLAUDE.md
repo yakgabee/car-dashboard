@@ -39,7 +39,8 @@ background threads do the work so a slow network call never freezes the screen.
 - `gestures.py` (stage 2, done): the owner's `spotify_gesture.py` from
   `Documents\CarPi\HAND GESTURE`, wrapped as `run(trigger)` and started in a
   thread. MediaPipe hand landmarker (`hand_landmarker.task` sits next to it),
-  camera 0 at 640x480. Open hand = play, fist = pause, two fingers
+  camera `"camera"` from config.json (default 0; the owner's OBS Virtual
+  Camera on the PC is 1) at 640x480. Open hand = play, fist = pause, two fingers
   (index + middle) pointing right/left = next/previous. A gesture must hold 6 frames to be
   recognised, then is carried out 1 s later (`DELAY_S`, owner asked: a
   delay, not a 1 s hold), and fires once until the hand drops or changes

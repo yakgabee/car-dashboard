@@ -138,6 +138,7 @@ DEFAULT_CONFIG = {
     "piper_voice": "en_US-lessac-medium",   # any Piper voice in models/ (.onnx + .onnx.json)
     "https_port": 5443,
     "mapbox_token": "",
+    "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
@@ -1766,7 +1767,7 @@ def main():
     except ImportError:
         print("[dashboard] lyrics off: pip install requests")
     if not args.no_gestures:
-        start_plugin("gestures", trigger)
+        start_plugin("gestures", trigger, int(cfg["camera"]))
     if cfg["anthropic_api_key"]:
         try:
             spec = importlib.util.spec_from_file_location("assistant", HERE / "assistant.py")

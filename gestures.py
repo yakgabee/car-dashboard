@@ -182,10 +182,10 @@ def watch(on_gesture, camera=CAMERA_INDEX, show=False):
             cv2.destroyAllWindows()
 
 
-def run(trigger):
+def run(trigger, camera=CAMERA_INDEX):
     """Called by dashboard.py in a background thread. Gesture names match the dashboard's actions."""
-    print(f"[gestures] watching camera {CAMERA_INDEX}")
-    watch(trigger)
+    print(f"[gestures] watching camera {camera}")
+    watch(trigger, camera=camera)
 
 
 def main():
