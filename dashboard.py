@@ -28,7 +28,6 @@ GESTURES
     and hand_landmarker.task in the same folder.
         Open hand -> play          Fist -> pause
         2 fingers right -> next    2 fingers left -> previous
-        Point up -> volume up      Point down -> volume down (hold to keep going)
     Test the camera on its own, with a preview window:  python3 gestures.py
 
     Any gesture code works if it has a function named run:
