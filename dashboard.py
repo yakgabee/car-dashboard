@@ -725,7 +725,8 @@ def start_plugin(name, *args):
 
 app = Flask(__name__, static_folder=None)   # /static is served below, from this folder
 screen = {"name": DEFAULT_CONFIG["name"], "theme": DEFAULT_CONFIG["theme"], "cursor": True,
-          "mapbox": ""}   # set in main(); the Mapbox token is a public one, made for web pages
+          "mapbox": "",   # set in main(); the Mapbox token is a public one, made for web pages
+          "boot": str(time.time())}   # changes at every start: an open page sees it and reloads itself
 
 
 @app.get("/")
@@ -757,7 +758,7 @@ def fonts(name):
 
 @app.get("/api/state")
 def api_state():
-    return jsonify(hub.snapshot())
+    return jsonify({**hub.snapshot(), "boot": screen["boot"]})
 
 
 @app.post("/api/action/<name>")
@@ -1986,7 +1987,9 @@ function render(s) {
 async function tick() {
   try {
     const r = await fetch("/api/state", {cache: "no-store"});
-    render(await r.json());
+    const s = await r.json();
+    if (s.boot && s.boot !== SCREEN.boot) { location.reload(); return; }   // dashboard restarted: get the new page
+    render(s);
     misses = 0;
   } catch (e) {
     if (++misses > 2) $("error").textContent = "Dashboard stopped. Check the Pi.";

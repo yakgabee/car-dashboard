@@ -197,6 +197,11 @@ background threads do the work so a slow network call never freezes the screen.
   `DELETE /api/search` closes. The wake phrase and Claude still play the
   first hit via `play_song`. Tested in demo with the Flask test client and
   a screenshot with injected results.
+- Auto-reload after a restart: `screen["boot"]` (start time) goes into the
+  page's SCREEN and into every `/api/state`; when they differ the page calls
+  `location.reload()`. Added because the owner restarted dashboard.py with
+  the browser tab still open: the new server said "Pick a song" but the old
+  page had no results list. Tested: one reload, no loop.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.
