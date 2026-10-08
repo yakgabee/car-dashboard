@@ -194,8 +194,6 @@ class Hub:
             "nav_error": None,
             "route_id": 0,          # changes when the route changes; the line itself is at /api/route
             "view": "home",         # "home", "lyrics" or "assistant"
-            "listen_mode": "claude",  # which Claude-page button started listening: "claude" or "song"
-            "search": None,         # {"id", "query", "results": [{"name", "artist"}]} from the Spotify button
             "chat": [],             # [{"id", "q", "a"}] questions asked on the Claude page and the text answers
             "lyrics_id": 0,         # changes when the lyrics change; the lines themselves are at /api/lyrics
             "lyrics_state": "none", # loading, synced, plain, instrumental, none, error
@@ -492,67 +490,24 @@ def is_playing(sp, sp_lock, track, tries):
     return False, pb
 
 
-def find_tracks(sp, sp_lock, query, limit=5):
-    """Spotify search for what was said: title+artist fields, then the whole phrase, then the title alone."""
-    title, _, artist = query.partition(" by ")
-    with sp_lock:
-        items = []
-        if artist:      # "road trips by drake" -> search the title and artist fields
-            items = sp.search(f"track:{title} artist:{artist}", type="track", limit=limit)["tracks"]["items"]
-        if not items:
-            items = sp.search(query, type="track", limit=limit)["tracks"]["items"]
-        if not items and artist:    # the artist name was probably misheard
-            items = sp.search(title, type="track", limit=limit)["tracks"]["items"]
-    return items
-
-
 def play_song(query):
     """Search Spotify and play the best match. Returns a sentence to speak. Called from the voice thread."""
     sp, sp_lock = player["sp"], player["lock"]
     if sp is None:
         return "Spotify is not connected."
-    try:
-        items = find_tracks(sp, sp_lock, query)
-    except Exception as err:
-        message = explain(err)[0]
-        hub.update(error=message)
-        return message
-    if not items:
-        return f"I couldn't find {query}."
-    return play_track(items[0])
-
-
-search = {"tracks": []}     # the last search's Spotify tracks; the screen shows them in Hub.search
-
-
-def search_songs(query):
-    """The Spotify button: search and list the top 5 on the Claude page; nothing plays until one is tapped.
-    Returns the sentence to show. Called from the voice thread."""
-    sp, sp_lock = player["sp"], player["lock"]
-    if sp is None:
-        return "Spotify is not connected."
-    try:
-        items = find_tracks(sp, sp_lock, query)
-    except Exception as err:
-        message = explain(err)[0]
-        hub.update(error=message)
-        return message
-    if not items:
-        hub.update(search=None)
-        return f"I couldn't find {query}."
-    search["tracks"] = items
-    results = [{"name": t["name"], "artist": ", ".join(a["name"] for a in t.get("artists", []))} for t in items]
-    with hub.lock:
-        last = hub.data["search"]
-        hub.data["search"] = {"id": (last["id"] + 1) if last else 1, "query": query, "results": results}
-    return f"Pick a song for \u201c{query}\u201d."
-
-
-def play_track(track):
-    """Play one Spotify track on the chosen device and check that it really started. Returns a sentence."""
-    sp, sp_lock = player["sp"], player["lock"]
+    title, _, artist = query.partition(" by ")
     try:
         with sp_lock:
+            items = []
+            if artist:      # "road trips by drake" -> search the title and artist fields
+                items = sp.search(f"track:{title} artist:{artist}", type="track", limit=5)["tracks"]["items"]
+            if not items:
+                items = sp.search(query, type="track", limit=5)["tracks"]["items"]
+            if not items and artist:    # the artist name was probably misheard
+                items = sp.search(title, type="track", limit=5)["tracks"]["items"]
+            if not items:
+                return f"I couldn't find {query}."
+            track = items[0]
             device = pick_device(sp)
             if not device.get("is_active"):
                 # an idle app often ignores a play command until playback is moved to it
@@ -820,7 +775,6 @@ def api_colors():
 
 
 listen_now = threading.Event()     # a talk button on the Claude page sets it, voice.py picks it up
-listen_mode = {"mode": "claude"}   # which button: "claude" (ask anything) or "song" (say a song for Spotify)
 
 
 def chat_reply(question, answer):
@@ -831,37 +785,11 @@ def chat_reply(question, answer):
         hub.data["chat"] = (chat + [entry])[-6:]
 
 
-@app.route("/api/search", methods=["DELETE"])
-def api_search_close():
-    hub.update(search=None)
-    return jsonify(ok=True)
-
-
-@app.post("/api/search/play")
-def api_search_play():
-    """A tapped search result: play it in the background (checking takes a few seconds)."""
-    try:
-        index = int((request.get_json(silent=True) or {}).get("index"))
-        track = search["tracks"][index]
-    except (TypeError, ValueError, IndexError):
-        return jsonify(ok=False, error="That result is gone. Search again."), 404
-    hub.update(search=None)
-    label = f"{track['name']} by {track['artists'][0]['name']}" if track.get("artists") else track["name"]
-    hub.show(f"Starting {track['name']}")
-    threading.Thread(target=lambda: chat_reply(label, play_track(track)), name="play", daemon=True).start()
-    return jsonify(ok=True)
-
-
 @app.post("/api/voice/listen")
 def api_voice_listen():
-    """A talk button on the Claude page: start listening (or cancel, if already listening).
-    Body {"mode": "claude"} asks Claude; {"mode": "song"} takes what is said as a song to play."""
+    """The Claude page's talk button: start listening (or cancel, if already listening)."""
     if hub.get("voice_state") == "off":
         return jsonify(ok=False, error=hub.get("voice_error") or "Voice is off."), 409
-    mode = (request.get_json(silent=True) or {}).get("mode")
-    if hub.get("voice_state") != "listening":       # a tap while listening cancels; keep that request's mode
-        listen_mode["mode"] = "song" if mode == "song" else "claude"
-        hub.update(listen_mode=listen_mode["mode"])
     listen_now.set()
     return jsonify(ok=True)
 
@@ -1416,15 +1344,12 @@ PAGE = r"""<!doctype html>
   .aiOld { opacity: 0.45; }
   .aiOld .aiA { font-size: 24px; font-weight: 500; }
   #aiEmpty { margin: auto; text-align: center; color: var(--muted); font-size: 26px; }
-  /* two talk buttons: Claude (ask anything) and Spotify (say a song) */
-  .aiBottom { display: flex; justify-content: center; gap: 96px; flex-shrink: 0; }
+  .aiBottom { display: flex; justify-content: center; flex-shrink: 0; }
   .talkBox { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 260px; }
   .talk { --ring: var(--claude); width: 96px; height: 96px; border-radius: 50%; border: 2px solid var(--ring);
           background: var(--panel); display: grid; place-items: center; padding: 0; cursor: pointer;
           position: relative; -webkit-tap-highlight-color: transparent; }
-  #talkSong { --ring: #1db954; }
   .talk svg { width: 54px; height: 54px; }
-  #talkSong svg { width: 62px; height: 62px; }
   .talk:active { transform: scale(0.95); }
   .talk.listening { background: var(--ring); }
   .talk.listening::after { content: ""; position: absolute; inset: -10px; border-radius: 50%;
@@ -1434,26 +1359,6 @@ PAGE = r"""<!doctype html>
   @keyframes spin { to { transform: rotate(360deg); } }
   .talkLabel { font-size: 22px; font-weight: 600; }
   .talkHint { font-size: 18px; color: var(--muted); height: 22px; white-space: nowrap; }
-  /* Spotify search results: replace the answers and buttons until one is tapped or closed */
-  #aiSearch { display: none; flex-direction: column; gap: 10px; flex-grow: 1; min-height: 0; }
-  html.searching #aiSearch { display: flex; }
-  html.searching #aiChat, html.searching .aiBottom { display: none; }
-  .srTop { display: flex; align-items: center; gap: 12px; }
-  #srTitle { flex-grow: 1; min-width: 0; font-size: 24px; color: var(--muted);
-             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .srBtn { height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
-           color: var(--text); font: inherit; font-size: 20px; font-weight: 600; cursor: pointer;
-           -webkit-tap-highlight-color: transparent; }
-  #srList { display: flex; flex-direction: column; gap: 8px; }
-  .srRow { height: 68px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel);
-           display: flex; align-items: center; gap: 16px; padding: 0 20px; cursor: pointer; text-align: left;
-           color: var(--text); font: inherit; -webkit-tap-highlight-color: transparent; }
-  .srRow:active { transform: scale(0.99); background: var(--line); }
-  .srNum { font-size: 22px; color: var(--muted); width: 22px; flex-shrink: 0; }
-  .srText { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
-  .srName { font-size: 25px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .srArtist { font-size: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .srRow svg { width: 30px; height: 30px; fill: #1db954; flex-shrink: 0; }
   #mic:active { transform: scale(0.95); }
   #mic.listening { background: var(--accent); border-color: var(--accent); }
   #mic.listening svg { stroke: var(--bg); }
@@ -1598,15 +1503,7 @@ PAGE = r"""<!doctype html>
     </button>
     <div id="aiTitle">Claude</div>
   </div>
-  <div id="aiChat"><div id="aiEmpty">Ask Claude anything, or tap Spotify and say a song</div></div>
-  <div id="aiSearch">
-    <div class="srTop">
-      <div id="srTitle"></div>
-      <button id="srAgain" class="srBtn" type="button">Search again</button>
-      <button id="srClose" class="srBtn" type="button">Close</button>
-    </div>
-    <div id="srList"></div>
-  </div>
+  <div id="aiChat"><div id="aiEmpty">Tap the button and ask anything</div></div>
   <div class="aiBottom">
     <div class="talkBox">
       <button id="talk" class="talk" type="button" aria-label="Ask Claude">
@@ -1614,11 +1511,6 @@ PAGE = r"""<!doctype html>
       </button>
       <div class="talkLabel">Claude</div>
       <div class="talkHint" id="talkHint"></div>
-    </div>
-    <div class="talkBox">
-      <button id="talkSong" class="talk" type="button" aria-label="Play a song on Spotify"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#1db954"/><path d="M6.3 9.1c3.9-1.2 8.3-.9 11.5.9M7 12.3c3.2-.9 6.8-.6 9.6.8M7.7 15.3c2.6-.7 5.3-.5 7.5.6" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-      <div class="talkLabel">Spotify</div>
-      <div class="talkHint" id="talkSongHint"></div>
     </div>
   </div>
 </div>
@@ -1791,52 +1683,13 @@ const VOICE_HINTS = {
   off: "Voice is off", idle: "", listening: "Listening…", working: "One moment…",
 };
 const TALK_HINTS = {
-  claude: {off: "Voice is off", idle: "Tap and ask", listening: "Listening… tap to cancel", working: "Thinking…"},
-  song: {off: "Voice is off", idle: "Tap and say a song", listening: "Say the song… tap to cancel", working: "Finding it…"},
+  off: "Voice is off", idle: "Tap and ask", listening: "Listening… tap to cancel", working: "Thinking…",
 };
-const TALK_BUTTONS = {claude: ["talk", "talkHint"], song: ["talkSong", "talkSongHint"]};
-let listenMode = "claude";
-function renderVoice(state, mode) {
-  if (mode) listenMode = mode;
-  for (const name of ["off", "listening", "working"]) $("mic").classList.toggle(name, state === name);
+function renderVoice(state) {
+  for (const id of ["mic", "talk"])
+    for (const name of ["off", "listening", "working"]) $(id).classList.toggle(name, state === name);
   $("voiceHint").textContent = VOICE_HINTS[state] || "";
-  // only the button that was pressed shows listening / working; "off" dims both
-  for (const [m, [button, hint]] of Object.entries(TALK_BUTTONS)) {
-    const mine = state === "off" || state === "idle" || m === listenMode;
-    for (const name of ["off", "listening", "working"]) $(button).classList.toggle(name, mine && state === name);
-    $(hint).textContent = mine ? (TALK_HINTS[m][state] || "") : "";
-  }
-}
-let shownSearch = 0;
-const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
-function renderSearch(sr) {
-  document.documentElement.classList.toggle("searching", !!sr);
-  if (!sr || sr.id === shownSearch) return;
-  shownSearch = sr.id;
-  $("srTitle").textContent = "Results for \u201c" + sr.query + "\u201d";
-  const list = $("srList");
-  list.textContent = "";
-  sr.results.forEach((r, i) => {
-    const row = document.createElement("button");
-    row.type = "button"; row.className = "srRow";
-    row.innerHTML = '<span class="srNum"></span><span class="srText"><span class="srName"></span>' +
-                    '<span class="srArtist"></span></span>' + PLAY_SVG;
-    row.querySelector(".srNum").textContent = i + 1;
-    row.querySelector(".srName").textContent = r.name;
-    row.querySelector(".srArtist").textContent = r.artist;
-    row.addEventListener("click", () => {
-      document.documentElement.classList.remove("searching");     // react now; the poll confirms
-      fetch("/api/search/play", {method: "POST", headers: {"Content-Type": "application/json"},
-                                 body: JSON.stringify({index: i})})
-        .then(r => r.ok ? null : r.json().then(j => toast(j.error)))
-        .catch(() => toast("Dashboard not reachable"));
-    });
-    list.append(row);
-  });
-}
-function closeSearch() {
-  document.documentElement.classList.remove("searching");
-  return fetch("/api/search", {method: "DELETE"}).catch(() => {});
+  $("talkHint").textContent = TALK_HINTS[state] || "";
 }
 let shownChat = 0;
 function renderChat(chat) {
@@ -1962,9 +1815,7 @@ function renderLyricsPage(s) {
 
 function render(s) {
   applyColors(s.colors);
-  if (s.listen_mode) listenMode = s.listen_mode;
   renderChat(s.chat || []);
-  renderSearch(s.search);
   renderLyricsPage(s);
   renderVoice(s.voice_state);
   $("volume").classList.toggle("off", !s.supports_volume);
@@ -2004,17 +1855,13 @@ for (const [id, action] of [["volUp", "volume_up"], ["volDown", "volume_down"]])
   });
 $("mic").addEventListener("click", () => setView("assistant"));
 $("aiBack").addEventListener("click", () => setView("home"));
-$("srClose").addEventListener("click", closeSearch);
-$("srAgain").addEventListener("click", () => closeSearch().then(() => $("talkSong").click()));
-for (const [mode, [button, hint]] of Object.entries(TALK_BUTTONS))
-  $(button).addEventListener("click", async () => {
-    try {
-      const r = await fetch("/api/voice/listen", {method: "POST", headers: {"Content-Type": "application/json"},
-                                                  body: JSON.stringify({mode})});
-      if (!r.ok) $(hint).textContent = (await r.json()).error || "Voice is off";
-      else if (!$(button).classList.contains("listening")) renderVoice("listening", mode);   // react before the next poll
-    } catch (e) { $(hint).textContent = "Dashboard not reachable"; }
-  });
+$("talk").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/voice/listen", {method: "POST"});
+    if (!r.ok) $("talkHint").textContent = (await r.json()).error || "Voice is off";
+    else if (!$("talk").classList.contains("listening")) renderVoice("listening");   // react before the next poll
+  } catch (e) { $("talkHint").textContent = "Dashboard not reachable"; }
+});
 $("cover").addEventListener("error", () => $("art").classList.remove("has-img"));
 
 fit(); clock(); tick();
@@ -2122,8 +1969,7 @@ def main():
     if not args.no_voice:
         start_plugin("voice", trigger, play_song, hub.show, cfg["wake_phrase"], listen_now,
                      lambda state: hub.update(voice_state=state), navigate, assist,
-                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"], chat_reply,
-                     lambda: listen_mode["mode"], search_songs)
+                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"], chat_reply)
     start_https(int(cfg["https_port"]))
 
     port = int(cfg["port"])

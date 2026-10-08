@@ -176,32 +176,15 @@ background threads do the work so a slow network call never freezes the screen.
   anything" shows too. The wake phrase still answers out loud. Toasts are
   not shown on the Claude page. Tested with a stand-in mic/speaker and
   screenshots with injected answers; NOT tested with a real microphone.
-- Two buttons on the Claude page (owner asked): Claude (spark, ask anything,
-  as before) and Spotify (green logo): whatever is said after it is a song,
-  "play"/"put on" stripped, sent straight to `play_song` without Claude, and
-  the result shown as text. `POST /api/voice/listen` takes `{"mode":
-  "claude"|"song"}` -> `listen_mode` (+ `Hub.listen_mode` so only the pressed
-  button shows listening/working); voice.py `run(..., listen_mode)` passes it
-  to `Listener.start_listening(mode=)`. The home footer button is a
-  microphone again (owner asked) and still opens the Claude page. Tested
-  with a stand-in mic and screenshots.
-- Spotify search mode (owner asked, no cover art per owner): the Spotify
-  button now calls dashboard `search_songs(query)` (voice.py `search_song`)
-  instead of playing the first hit. `find_tracks()` (same 3-step search as
-  before) -> top 5 kept in `search["tracks"]`, shown via `Hub.search`
-  (`{"id", "query", "results": [{"name", "artist"}]}`) as 5 tappable rows
-  that replace the answers and buttons on the Claude page (`html.searching`),
-  with "Search again" and "Close". Tap -> `POST /api/search/play {"index"}`
-  clears the search and runs `play_track()` (device pick + transfer + check,
-  split out of `play_song`) in a thread; the result goes to `Hub.chat`.
-  `DELETE /api/search` closes. The wake phrase and Claude still play the
-  first hit via `play_song`. Tested in demo with the Flask test client and
-  a screenshot with injected results.
+- Spotify button / search mode on the Claude page: built, then removed (owner:
+  "forget about the whole spotify thing, just keep to Claude"). The Claude
+  page has one button again and `play_song` is one function as before.
+  Kept: the home footer button is a microphone (owner asked) that opens the
+  Claude page.
 - Auto-reload after a restart: `screen["boot"]` (start time) goes into the
   page's SCREEN and into every `/api/state`; when they differ the page calls
   `location.reload()`. Added because the owner restarted dashboard.py with
-  the browser tab still open: the new server said "Pick a song" but the old
-  page had no results list. Tested: one reload, no loop.
+  the browser tab still open and kept running the old page. Tested: one reload, no loop.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.
