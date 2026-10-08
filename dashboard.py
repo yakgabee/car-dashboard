@@ -1102,7 +1102,8 @@ PAGE = r"""<!doctype html>
                          transform: translate(-50%, -50%) scale(var(--scale, 1)); }
   #screen { padding: 22px 32px 18px; display: flex; flex-direction: column; gap: 16px; }
   #art { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  html.lyrics #screen { visibility: hidden; }
+  /* hidden, not display:none, so Leaflet keeps its size; !important beats the map's own visibility: visible */
+  html.lyrics #screen, html.lyrics #screen * { visibility: hidden !important; }
   #lyricsPage { display: none; grid-template-columns: 404px 620px; }
   html.lyrics #lyricsPage { display: grid; }
 
