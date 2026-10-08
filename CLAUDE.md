@@ -143,7 +143,9 @@ background threads do the work so a slow network call never freezes the screen.
   `zoomend` events that the map didn't ask for (`autoTarget`) count as the
   user's, button animations are ignored for 700 ms so fast taps add up.
   Tested in a browser with a test token: buttons, limits, wheel, and the
-  zoom staying put across position updates. Token: `mapbox_token` in config.json (public pk.,
+  zoom staying put across position updates. Mouse wheel: one level per
+  notch (`wheelPxPerZoomLevel: 120`); scrolling down zooms out (tested at
+  1024x600 and 1920x1080). Token: `mapbox_token` in config.json (public pk.,
   also given to the page). Tested with a simulated drive; not yet in a car.
 - Phone location (owner chose the website over the Expo app): the phone page
   has "Share my location" (watchPosition + screen wake lock) posting to

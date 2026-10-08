@@ -1583,7 +1583,8 @@ function setupMap() {
   const style = document.documentElement.dataset.theme === "light" ? "light-v11" : "dark-v11";
   map = L.map("mapView", {zoomControl: false, dragging: false, scrollWheelZoom: "center", doubleClickZoom: "center",
                           boxZoom: false, keyboard: false, touchZoom: "center", fadeAnimation: false,
-                          minZoom: ZOOM_MIN, maxZoom: ZOOM_MAX});
+                          minZoom: ZOOM_MIN, maxZoom: ZOOM_MAX,
+                          wheelPxPerZoomLevel: 120, wheelDebounceTime: 60});   // about one level per wheel notch
   map.on("zoomend", () => {     // a zoom the map didn't ask for came from a pinch, the wheel or a double tap
     if (Date.now() < buttonZoomUntil) return;
     if (Math.round(map.getZoom()) !== autoTarget) userZoom = Math.round(map.getZoom());
