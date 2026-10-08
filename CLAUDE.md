@@ -120,15 +120,6 @@ background threads do the work so a slow network call never freezes the screen.
   the phone page). Keep `certs/ca-key.pem` private: a phone that trusts the CA
   would trust anything signed with it. Not yet confirmed on the owner's
   iPhone. Sharing stops when the phone locks.
-- OwnTracks (owner asked, for location while the phone is locked): the free
-  open-source OwnTracks app in HTTP mode posts to `POST /api/owntracks`
-  (http on 5000 or https on 5443), which writes the same `Hub.position`
-  (`vel` km/h -> m/s, `cog` -> heading, `tst` as the time, clamped to now).
-  Non-"location" messages are ignored; points older than the current one
-  (queued after a dropped connection) are dropped; it always answers `[]`.
-  Setup steps with this machine's URL are in a fold on the phone page.
-  Tested with curl only; NOT yet tested with the real app, so update rate in
-  "Move" mode and whether iOS OwnTracks accepts the plain-http URL are open.
 - Volume control (owner asked for on-screen buttons here): a 44px strip right
   of the 300px cover art with +, a level bar (`Hub.volume`) and -, posting
   `volume_up`/`volume_down`. Dimmed when the device reports no remote volume

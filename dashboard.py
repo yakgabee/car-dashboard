@@ -714,38 +714,14 @@ def api_position():
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return jsonify(ok=False, error="lat/lon out of range"), 400
 
-    hub.update(position={"lat": lat, "lon": lon, "accuracy": number(body, "accuracy"),
-                         "speed": number(body, "speed"), "heading": number(body, "heading"), "at": time.time()})
+    def num(key):
+        try:
+            return round(float(body[key]), 1)
+        except (KeyError, TypeError, ValueError):
+            return None
+    hub.update(position={"lat": lat, "lon": lon, "accuracy": num("accuracy"), "speed": num("speed"),
+                         "heading": num("heading"), "at": time.time()})
     return jsonify(ok=True)
-
-
-def number(body, key, scale=1.0):
-    try:
-        return round(float(body[key]) * scale, 1)
-    except (KeyError, TypeError, ValueError):
-        return None
-
-
-@app.post("/api/owntracks")
-def api_owntracks():
-    """The OwnTracks app (HTTP mode) posts here. Unlike the phone page it keeps going while the
-    phone is locked. Only "location" messages matter; OwnTracks expects a JSON list back."""
-    body = request.get_json(silent=True) or {}
-    if body.get("_type") != "location":
-        return jsonify([])
-    try:
-        lat, lon = float(body["lat"]), float(body["lon"])
-    except (KeyError, TypeError, ValueError):
-        return jsonify([])
-    at = number(body, "tst") or time.time()
-    old = hub.get("position")
-    # OwnTracks sends queued points after a dropped connection; never go back in time
-    if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (old and at < old["at"]):
-        return jsonify([])
-    hub.update(position={"lat": lat, "lon": lon, "accuracy": number(body, "acc"),
-                         "speed": number(body, "vel", 1 / 3.6),      # km/h -> m/s, like the phone page
-                         "heading": number(body, "cog"), "at": min(at, time.time())})
-    return jsonify([])
 
 
 def local_addresses():
@@ -899,12 +875,10 @@ PHONE_PAGE = r"""<!doctype html>
   #share.on { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
   #locStatus { min-height: 24px; color: var(--muted); }
   #locStatus a { color: var(--route); word-break: break-all; }
-  #caHelp, #otHelp { color: var(--muted); font-size: 16px; line-height: 1.4; }
-  #caHelp summary, #otHelp summary { cursor: pointer; color: var(--text); }
-  #caHelp ol, #otHelp ol { margin: 8px 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  #caHelp { color: var(--muted); font-size: 16px; line-height: 1.4; }
+  #caHelp summary { cursor: pointer; color: var(--text); }
+  #caHelp ol { margin: 8px 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   #caHelp a { color: var(--route); }
-  #otHelp { margin-top: 10px; }
-  #otHelp .url { color: var(--text); word-break: break-all; user-select: all; -webkit-user-select: all; }
 </style>
 </head>
 <body>
@@ -933,19 +907,6 @@ PHONE_PAGE = r"""<!doctype html>
       <li>Settings, Privacy &amp; Security, Location Services, <b>Safari Websites</b>:
         <b>While Using the App</b>.</li>
       <li>Open <a id="secureLink2">the secure page</a> again and tap Share my location.</li>
-    </ol>
-  </details>
-  <details id="otHelp">
-    <summary>Keep sharing while the phone is locked (free OwnTracks app)</summary>
-    <ol>
-      <li>Install <b>OwnTracks</b> from the App Store or Google Play and allow location
-        <b>Always</b>.</li>
-      <li>In its settings: Mode <b>HTTP</b>, URL <b class="url" id="otUrl"></b>
-        (if it refuses that, use <b class="url" id="otUrlSecure"></b>). No user or password.</li>
-      <li>On its map, pick the monitoring mode <b>Move</b> while driving; it sends often.
-        Other modes only send every few hundred metres.</li>
-      <li>The phone must be on the dashboard's network (its own hotspot is fine).
-        You can close this page; the map follows the app.</li>
     </ol>
   </details>
 
@@ -1091,8 +1052,6 @@ function startSharing() {
 }
 $("share").addEventListener("click", () => watchId === null ? startSharing() : stopSharing("Stopped."));
 $("caLink").href = "http://" + location.hostname + ":" + HTTP_PORT + "/ca.crt";
-$("otUrl").textContent = "http://" + location.hostname + ":" + HTTP_PORT + "/api/owntracks";
-$("otUrlSecure").textContent = "https://" + location.hostname + ":" + HTTPS_PORT + "/api/owntracks";
 $("secureLink2").href = secureLink();
 document.addEventListener("visibilitychange", () => { if (watchId !== null && !document.hidden) keepAwake(); });
 if (!window.isSecureContext) {
