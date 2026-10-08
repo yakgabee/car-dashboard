@@ -185,6 +185,18 @@ background threads do the work so a slow network call never freezes the screen.
   to `Listener.start_listening(mode=)`. The home footer button is a
   microphone again (owner asked) and still opens the Claude page. Tested
   with a stand-in mic and screenshots.
+- Spotify search mode (owner asked, no cover art per owner): the Spotify
+  button now calls dashboard `search_songs(query)` (voice.py `search_song`)
+  instead of playing the first hit. `find_tracks()` (same 3-step search as
+  before) -> top 5 kept in `search["tracks"]`, shown via `Hub.search`
+  (`{"id", "query", "results": [{"name", "artist"}]}`) as 5 tappable rows
+  that replace the answers and buttons on the Claude page (`html.searching`),
+  with "Search again" and "Close". Tap -> `POST /api/search/play {"index"}`
+  clears the search and runs `play_track()` (device pick + transfer + check,
+  split out of `play_song`) in a thread; the result goes to `Hub.chat`.
+  `DELETE /api/search` closes. The wake phrase and Claude still play the
+  first hit via `play_song`. Tested in demo with the Flask test client and
+  a screenshot with injected results.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.

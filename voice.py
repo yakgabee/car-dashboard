@@ -138,6 +138,7 @@ class Listener:
         self.from_button = False
         self.question, self.answered = "", False
         self.mode = "claude"
+        self.search_song = None     # search_song(query): list Spotify results on screen (Spotify button)
 
     def reply(self, text):
         """Answer the request: as text on the Claude page after the button, out loud otherwise."""
@@ -202,8 +203,8 @@ class Listener:
         rest = re.sub(r"^(?:can you |could you |please )", "", rest)
         if self.from_button and self.mode == "song":    # Spotify button: it's a song, no Claude
             query = re.sub(r"^(?:play |put on )(?:the song |me )?", "", rest).strip()
-            self.show(f"Finding {query}")
-            self.reply(self.play_song(query))
+            self.show(f"Searching {query}")
+            self.reply((self.search_song or self.play_song)(query))      # results to tap, or play the first
             return
         action = COMMANDS.get(re.sub(r"\s+(?:please|the song|song)$", "", rest))
         if action:
@@ -290,12 +291,14 @@ def listen(listener, speaker, listen_now=None, announcements=None, listen_mode=N
 
 def run(trigger, play_song, show, wake_phrase="hey bitch", listen_now=None, set_state=lambda state: None,
         navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None,
-        listen_mode=None):
+        listen_mode=None, search_song=None):
     """Called by dashboard.py in a background thread. listen_now: the Claude page's talk button.
     on_text(question, answer): where button answers go (shown on screen, not spoken).
-    listen_mode(): which button was pressed, "claude" or "song"."""
+    listen_mode(): which button was pressed, "claude" or "song".
+    search_song(query): the Spotify button lists results to tap instead of playing the first."""
     speaker = Speaker(voice_name)
     listener = Listener(wake_phrase, speaker, trigger, play_song, show, set_state, navigate, assist, on_text)
+    listener.search_song = search_song
     set_state("idle")
     listen(listener, speaker, listen_now, announcements, listen_mode)
 
