@@ -143,8 +143,8 @@ DEFAULT_CONFIG = {
 
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 ACTIONS = ("play", "pause", "play_pause", "next", "previous", "volume_up", "volume_down")
-VIEWS = ("home", "lyrics", "toggle_view")   # screen switches; trigger() handles them without Spotify
-COOLDOWN = {"volume_up": 0.3, "volume_down": 0.3, "home": 0.3, "lyrics": 0.3}   # seconds; others use 1.0
+VIEWS = ("home", "lyrics", "assistant", "toggle_view")   # screen switches; trigger() handles them without Spotify
+COOLDOWN = {"volume_up": 0.3, "volume_down": 0.3, "home": 0.3, "lyrics": 0.3, "assistant": 0.3}   # seconds; others use 1.0
 LABELS = {
     "play": "Play",
     "pause": "Pause",
@@ -191,7 +191,8 @@ class Hub:
             "nav_status": None,     # "Finding ...", "Waiting for your location ..."
             "nav_error": None,
             "route_id": 0,          # changes when the route changes; the line itself is at /api/route
-            "view": "home",         # "home" or "lyrics"
+            "view": "home",         # "home", "lyrics" or "assistant"
+            "chat": [],             # [{"id", "q", "a"}] questions asked on the Claude page and the text answers
             "lyrics_id": 0,         # changes when the lyrics change; the lines themselves are at /api/lyrics
             "lyrics_state": "none", # loading, synced, plain, instrumental, none, error
         }
@@ -692,12 +693,20 @@ def api_colors():
     return jsonify(ok=True, colors=hub.get("colors"), defaults=COLOR_DEFAULTS[screen["theme"]])
 
 
-listen_now = threading.Event()     # the mic button sets it, voice.py picks it up
+listen_now = threading.Event()     # the Claude page's talk button sets it, voice.py picks it up
+
+
+def chat_reply(question, answer):
+    """voice.py hands over a Claude-page question and its answer here, to show instead of speaking."""
+    with hub.lock:
+        chat = hub.data["chat"]
+        entry = {"id": (chat[-1]["id"] + 1) if chat else 1, "q": question, "a": answer}
+        hub.data["chat"] = (chat + [entry])[-6:]
 
 
 @app.post("/api/voice/listen")
 def api_voice_listen():
-    """The mic button: start listening for a command (or cancel, if already listening)."""
+    """The Claude page's talk button: start listening for a command (or cancel, if already listening)."""
     if hub.get("voice_state") == "off":
         return jsonify(ok=False, error=hub.get("voice_error") or "Voice is off."), 409
     listen_now.set()
@@ -1084,14 +1093,14 @@ PAGE = r"""<!doctype html>
     --bg: #0c0f12; --panel: #151a20; --line: #252c35; --text: #f3f5f7; --muted: #9aa4b2;
     --accent: #ffb14a; --route: #5aa9ff; --on-route: #0c0f12; --map: #151a20; --map-line: #252c35;
     --art: #1a2028; --art-line: #2a323c; --art-icon: #5b6675; --track: #2a323c; --warn: #ff7a6e;
-    --ly-far: #7f8998; --ly-next: #d3d9e1;
+    --ly-far: #7f8998; --ly-next: #d3d9e1; --claude: #d97757;
   }
   :root { --car: var(--route); --ly-current: var(--accent); --ly-mid: var(--muted); }
   [data-theme="light"] {
     --bg: #eef1f4; --panel: #ffffff; --line: #d5dae1; --text: #12161b; --muted: #556070;
     --accent: #a35400; --route: #1d6fd1; --on-route: #ffffff; --map: #dde2e8; --map-line: #c9d0d9;
     --art: #dfe4ea; --art-line: #c9d0d9; --art-icon: #7b8696; --track: #cfd5dd; --warn: #b3261e;
-    --ly-far: #636b78; --ly-next: #2a313a;
+    --ly-far: #636b78; --ly-next: #2a313a; --claude: #c15f3c;
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
@@ -1099,12 +1108,13 @@ PAGE = r"""<!doctype html>
          font-family: Barlow, system-ui, "Segoe UI", Roboto, "DejaVu Sans", sans-serif; }
 
   /* drawn at 1024x600 like the mockups, then scaled to fit the real screen */
-  #screen, #lyricsPage { position: absolute; left: 50%; top: 50%; width: 1024px; height: 600px;
-                         transform: translate(-50%, -50%) scale(var(--scale, 1)); }
+  #screen, #lyricsPage, #aiPage { position: absolute; left: 50%; top: 50%; width: 1024px; height: 600px;
+                                  transform: translate(-50%, -50%) scale(var(--scale, 1)); }
   #screen { padding: 22px 32px 18px; display: flex; flex-direction: column; gap: 16px; }
   #art { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   /* hidden, not display:none, so Leaflet keeps its size; !important beats the map's own visibility: visible */
   html.lyrics #screen, html.lyrics #screen * { visibility: hidden !important; }
+  html.assistant #screen, html.assistant #screen * { visibility: hidden !important; }
   #lyricsPage { display: none; grid-template-columns: 404px 620px; }
   html.lyrics #lyricsPage { display: grid; }
 
@@ -1232,7 +1242,39 @@ PAGE = r"""<!doctype html>
   #mic { width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel);
          display: grid; place-items: center; padding: 0; cursor: pointer; position: relative;
          -webkit-tap-highlight-color: transparent; transition: background 0.15s, border-color 0.15s; }
-  #mic svg { width: 30px; height: 30px; stroke: var(--text); }
+  #mic svg, #talk svg { width: 34px; height: 34px; stroke: var(--claude); stroke-width: 2.4; stroke-linecap: round; }
+  #mic.listening svg, #talk.listening svg { stroke: #fff; }
+
+  /* Claude page: ask with the button, the answer is shown as text */
+  #aiPage { display: none; flex-direction: column; padding: 22px 32px 24px; gap: 14px; }
+  html.assistant #aiPage { display: flex; }
+  .aiTop { display: flex; align-items: center; gap: 16px; height: 56px; flex-shrink: 0; }
+  #aiBack { height: 52px; padding: 0 20px 0 14px; border-radius: 14px; border: 1px solid var(--line);
+            background: var(--panel); color: var(--text); font: inherit; font-size: 22px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #aiBack svg { width: 26px; height: 26px; stroke: var(--text); }
+  #aiTitle { font-size: 32px; font-weight: 700; }
+  #aiChat { flex-grow: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+            justify-content: flex-end; gap: 18px; padding: 0 8px; }
+  .aiQ { font-size: 22px; color: var(--muted); }
+  .aiA { font-size: 30px; font-weight: 600; line-height: 1.3; }
+  .aiA.long { font-size: 24px; font-weight: 500; }
+  .aiOld { opacity: 0.45; }
+  .aiOld .aiA { font-size: 24px; font-weight: 500; }
+  #aiEmpty { margin: auto; text-align: center; color: var(--muted); font-size: 26px; }
+  .aiBottom { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+  #talk { width: 96px; height: 96px; border-radius: 50%; border: 2px solid var(--claude); background: var(--panel);
+          display: grid; place-items: center; padding: 0; cursor: pointer; position: relative;
+          -webkit-tap-highlight-color: transparent; }
+  #talk svg { width: 54px; height: 54px; }
+  #talk:active { transform: scale(0.95); }
+  #talk.listening { background: var(--claude); }
+  #talk.listening::after { content: ""; position: absolute; inset: -10px; border-radius: 50%;
+                           border: 3px solid var(--claude); animation: ring 1.1s ease-out infinite; }
+  #talk.working svg { animation: spin 2.4s linear infinite; }
+  #talk.off { opacity: 0.4; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #talkHint { font-size: 20px; color: var(--muted); height: 24px; }
   #mic:active { transform: scale(0.95); }
   #mic.listening { background: var(--accent); border-color: var(--accent); }
   #mic.listening svg { stroke: var(--bg); }
@@ -1319,10 +1361,8 @@ PAGE = r"""<!doctype html>
 
   <footer>
     <div id="error"></div>
-    <button id="mic" type="button" aria-label="Voice command">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
-      </svg>
+    <button id="mic" type="button" aria-label="Ask Claude">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.2 12.3L21.9 13.4M13.7 13.4L17.9 16.6M12.8 14.0L15.6 20.8M11.7 14.2L10.9 19.9M10.6 13.7L5.5 20.3M10.0 12.8L5.5 14.6M9.8 11.7L3.1 10.7M10.3 10.6L5.3 6.8M11.2 10.0L8.3 2.7M12.3 9.8L13.0 4.6M13.4 10.3L17.8 4.5M14.0 11.2L19.4 9.0"/></svg>
     </button>
     <div id="voiceHint"></div>
   </footer>
@@ -1366,6 +1406,23 @@ PAGE = r"""<!doctype html>
       <div id="lyMessageMain">No lyrics</div>
       <div id="lyMessageNote"></div>
     </div>
+  </div>
+</div>
+
+<div id="aiPage">
+  <div class="aiTop">
+    <button id="aiBack" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+      Back
+    </button>
+    <div id="aiTitle">Claude</div>
+  </div>
+  <div id="aiChat"><div id="aiEmpty">Tap the button and ask anything</div></div>
+  <div class="aiBottom">
+    <button id="talk" type="button" aria-label="Ask a question">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.2 12.3L21.9 13.4M13.7 13.4L17.9 16.6M12.8 14.0L15.6 20.8M11.7 14.2L10.9 19.9M10.6 13.7L5.5 20.3M10.0 12.8L5.5 14.6M9.8 11.7L3.1 10.7M10.3 10.6L5.3 6.8M11.2 10.0L8.3 2.7M12.3 9.8L13.0 4.6M13.4 10.3L17.8 4.5M14.0 11.2L19.4 9.0"/></svg>
+    </button>
+    <div id="talkHint"></div>
   </div>
 </div>
 
@@ -1536,10 +1593,35 @@ function applyColors(colors) {
 const VOICE_HINTS = {
   off: "Voice is off", idle: "", listening: "Listening…", working: "One moment…",
 };
+const TALK_HINTS = {
+  off: "Voice is off", idle: "Tap and ask", listening: "Listening… tap again to cancel", working: "Thinking…",
+};
 function renderVoice(state) {
-  const mic = $("mic");
-  for (const name of ["off", "listening", "working"]) mic.classList.toggle(name, state === name);
+  for (const id of ["mic", "talk"])
+    for (const name of ["off", "listening", "working"]) $(id).classList.toggle(name, state === name);
   $("voiceHint").textContent = VOICE_HINTS[state] || "";
+  $("talkHint").textContent = TALK_HINTS[state] || "";
+}
+let shownChat = 0;
+function renderChat(chat) {
+  const last = chat.length ? chat[chat.length - 1].id : 0;
+  if (last === shownChat) return;
+  shownChat = last;
+  const box = $("aiChat");
+  box.textContent = "";
+  if (!chat.length) {
+    box.innerHTML = '<div id="aiEmpty">Tap the button and ask anything</div>';
+    return;
+  }
+  chat.slice(-3).forEach((c, i, list) => {
+    const item = document.createElement("div");
+    if (i < list.length - 1) item.className = "aiOld";
+    const q = document.createElement("div"), a = document.createElement("div");
+    q.className = "aiQ"; q.textContent = c.q ? "You: " + c.q : "";
+    a.className = c.a.length > 200 ? "aiA long" : "aiA"; a.textContent = c.a;
+    item.append(q, a);
+    box.append(item);
+  });
 }
 // ---- the lyrics page
 const LEAD_MS = 300;    // show a line a moment early: Spotify's position arrives a little late
@@ -1552,8 +1634,9 @@ const LY_MESSAGES = {
   error: ["No connection to the lyrics service", "Trying again shortly"],
 };
 function showView(v) {
-  view = v === "lyrics" ? "lyrics" : "home";
+  view = ["lyrics", "assistant"].includes(v) ? v : "home";
   document.documentElement.classList.toggle("lyrics", view === "lyrics");
+  document.documentElement.classList.toggle("assistant", view === "assistant");
   lyIndex = null;
   lyTick();
 }
@@ -1643,6 +1726,7 @@ function renderLyricsPage(s) {
 
 function render(s) {
   applyColors(s.colors);
+  renderChat(s.chat || []);
   renderLyricsPage(s);
   renderVoice(s.voice_state);
   $("volume").classList.toggle("off", !s.supports_volume);
@@ -1658,7 +1742,7 @@ function render(s) {
   renderWeather(s.weather);
   renderRoute(s);
   if (s.last_action && s.last_action.id !== lastAction) {
-    if (lastAction !== null) toast(s.last_action.label);
+    if (lastAction !== null && view !== "assistant") toast(s.last_action.label);   // the Claude page shows its own state
     lastAction = s.last_action.id;
   } else if (!s.last_action && lastAction === null) { lastAction = 0; }
 }
@@ -1678,12 +1762,14 @@ for (const [id, action] of [["volUp", "volume_up"], ["volDown", "volume_down"]])
   $(id).addEventListener("click", () => {
     fetch("/api/action/" + action, {method: "POST"}).then(tick).catch(() => toast("Dashboard not reachable"));
   });
-$("mic").addEventListener("click", async () => {
+$("mic").addEventListener("click", () => setView("assistant"));
+$("aiBack").addEventListener("click", () => setView("home"));
+$("talk").addEventListener("click", async () => {
   try {
     const r = await fetch("/api/voice/listen", {method: "POST"});
-    if (!r.ok) toast((await r.json()).error || "Voice is off");
-    else if (!$("mic").classList.contains("listening")) renderVoice("listening");   // react before the next poll
-  } catch (e) { toast("Dashboard not reachable"); }
+    if (!r.ok) $("talkHint").textContent = (await r.json()).error || "Voice is off";
+    else if (!$("talk").classList.contains("listening")) renderVoice("listening");   // react before the next poll
+  } catch (e) { $("talkHint").textContent = "Dashboard not reachable"; }
 });
 $("cover").addEventListener("error", () => $("art").classList.remove("has-img"));
 
@@ -1792,7 +1878,7 @@ def main():
     if not args.no_voice:
         start_plugin("voice", trigger, play_song, hub.show, cfg["wake_phrase"], listen_now,
                      lambda state: hub.update(voice_state=state), navigate, assist,
-                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"])
+                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"], chat_reply)
     start_https(int(cfg["https_port"]))
 
     port = int(cfg["port"])

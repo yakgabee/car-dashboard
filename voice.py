@@ -127,14 +127,24 @@ class Listener:
     """Turns recognised sentences into actions."""
 
     def __init__(self, wake_phrase, speaker, trigger, play_song, show, set_state=lambda state: None,
-                 navigate=None, assist=None):
+                 navigate=None, assist=None, on_text=None):
         self.wake = wake_pattern(wake_phrase)
         self.speaker, self.trigger, self.play_song, self.show = speaker, trigger, play_song, show
         self.set_state = set_state
         self.navigate = navigate    # navigate(place) -> sentence to speak
         self.assist = assist        # assist(words, from_button) -> sentence, "" (stay quiet) or None (no Claude)
+        self.on_text = on_text      # on_text(question, answer): button replies go on screen instead of out loud
         self.awaiting_until = 0.0
         self.from_button = False
+        self.question, self.answered = "", False
+
+    def reply(self, text):
+        """Answer the request: as text on the Claude page after the button, out loud otherwise."""
+        if self.from_button and self.on_text:
+            self.on_text(self.question, text)
+            self.answered = True
+        elif text:
+            self.speaker.say(text)
 
     @property
     def awaiting(self):
@@ -156,6 +166,8 @@ class Listener:
         self.set_state("idle")
         if why:
             self.show(why)
+            if self.from_button and self.on_text and why != "Cancelled":
+                self.on_text("", why)
 
     def heard(self, text):
         text = text.lower().strip()
@@ -175,8 +187,11 @@ class Listener:
             return
         self.awaiting_until = 0.0
         self.set_state("working")
+        self.question, self.answered = rest, False
         try:
             self.command(rest)
+            if self.from_button and self.on_text and not self.answered:
+                self.on_text(rest, "Done.")         # a control like "pause": nothing to say, but show it worked
         finally:
             self.set_state("idle")
 
@@ -188,7 +203,7 @@ class Listener:
             return
         place = re.match(r"(?:take me to|navigate to|directions to|drive to|get me to) (?:the )?(.+)", rest)
         if place and self.navigate:
-            self.speaker.say(self.navigate(place.group(1)))
+            self.reply(self.navigate(place.group(1)))
             return
         song = re.match(r"play (?:the song |me )?(.+)", rest)
         if song and song.group(1) not in ("music", "it", "again", "something"):
@@ -199,16 +214,16 @@ class Listener:
                 reply = self.assist(rest, self.from_button)
                 if reply is not None:       # Claude handled it
                     if reply:
-                        self.speaker.say(reply)
+                        self.reply(reply)
                     return
             if self.from_button:
                 query = rest        # no Claude: after the button, anything else is taken as a song name
             else:
-                self.speaker.say("Sorry, I didn't catch that.")
+                self.reply("Sorry, I didn't catch that.")
                 return
         query = re.split(r"\s+play\s+", query)[0].strip()   # background talk can run on: keep the first request
         self.show(f"Finding {query}")
-        self.speaker.say(self.play_song(query))
+        self.reply(self.play_song(query))
 
 
 def recognizer(rate):
@@ -266,10 +281,11 @@ def listen(listener, speaker, listen_now=None, announcements=None):
 
 
 def run(trigger, play_song, show, wake_phrase="hey bitch", listen_now=None, set_state=lambda state: None,
-        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE):
-    """Called by dashboard.py in a background thread. listen_now: the mic button's Event."""
+        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None):
+    """Called by dashboard.py in a background thread. listen_now: the Claude page's talk button.
+    on_text(question, answer): where button answers go (shown on screen, not spoken)."""
     speaker = Speaker(voice_name)
-    listener = Listener(wake_phrase, speaker, trigger, play_song, show, set_state, navigate, assist)
+    listener = Listener(wake_phrase, speaker, trigger, play_song, show, set_state, navigate, assist, on_text)
     set_state("idle")
     listen(listener, speaker, listen_now, announcements)
 

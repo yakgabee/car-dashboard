@@ -64,7 +64,7 @@ background threads do the work so a slow network call never freezes the screen.
   Spotify; `--say` and `--file` too. No Ollama questions yet.
   The small Vosk model mishears unusual names; Spotify's fuzzy search covers
   a lot of it. Loud music in the car will hurt recognition.
-- Mic button (bottom center of the screen, in a footer row with the error
+- Mic button, now the Claude page's talk button (bottom center of the screen, in a footer row with the error
   text on the left and a voice hint on the right): `POST /api/voice/listen`
   sets `listen_now`; voice.py beeps and takes the next sentence (8 s) as the
   command. After the button, anything that is not a command is treated as a
@@ -148,6 +148,17 @@ background threads do the work so a slow network call never freezes the screen.
   Tested in demo mode at 800x480, 1024x600, 1280x720 and the lookup against
   canned LRCLIB replies; lrclib.net itself was blocked in the build sandbox,
   so NOT yet tested against the real service.
+- Claude page (owner asked): the footer button is now a Claude logo (an
+  orange spark, `--claude` #d97757 dark / #c15f3c light) and opens a third
+  view, `Hub.view` = "assistant" (`#aiPage`: Back, title, the last 3
+  questions and answers, newest large at the bottom, and a big talk button).
+  The talk button posts `/api/voice/listen` as the mic button did. Requests
+  started from the button are answered as TEXT: voice.py `Listener.reply()`
+  sends (question, answer) to dashboard `chat_reply()` -> `Hub.chat` (last 6)
+  instead of speaking; controls like "pause" show "Done.", "Didn't hear
+  anything" shows too. The wake phrase still answers out loud. Toasts are
+  not shown on the Claude page. Tested with a stand-in mic/speaker and
+  screenshots with injected answers; NOT tested with a real microphone.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.
