@@ -5,7 +5,7 @@ Anything else goes here: Claude reads what the speech recogniser heard, plus a
 little car state (song, destination, weather, time), and picks ONE action:
 
     play_song  query        -> Spotify search and play
-    control    control      -> play / pause / next / previous / volume / lyrics / home screen
+    control    control      -> play / pause / next / previous / lyrics / home screen
     navigate   destination  -> set the destination (Mapbox does the routing)
     answer     reply        -> a short spoken answer
     search     query        -> live information: a second request searches the web
@@ -40,7 +40,7 @@ Earlier turns of this conversation are included, so follow-up questions refer to
 Pick exactly one action:
 - play_song: the driver wants music. Put the song and artist, spelled as on Spotify, in "query".
   For a mood or genre ("something chill"), pick one fitting, well-known song.
-- control: playback control. "control" is one of play, pause, next, previous, volume_up, volume_down, lyrics (show the lyrics page), home (back to the map and home screen; "take me home" is navigate, not this).
+- control: playback control. "control" is one of play, pause, next, previous, lyrics (show the lyrics page), home (back to the map and home screen; "take me home" is navigate, not this).
 - navigate: the driver wants to go somewhere. Put a place name or address a map search would
   understand in "destination". Never give directions yourself; the map service does the routing.
 - answer: a question you can answer from general knowledge, the conversation so far, or the car
@@ -64,7 +64,7 @@ DECISION_SCHEMA = {
                    "enum": ["play_song", "control", "navigate", "answer", "search", "none"]},
         "query": {"type": "string"},
         "control": {"type": "string",
-                    "enum": ["", "play", "pause", "next", "previous", "volume_up", "volume_down", "lyrics", "home"]},
+                    "enum": ["", "play", "pause", "next", "previous", "lyrics", "home"]},
         "destination": {"type": "string"},
         "reply": {"type": "string"},
     },

@@ -38,7 +38,7 @@ GESTURES
                 if gesture == "swipe_right":
                     trigger("next")
 
-    Actions: play, pause, play_pause, next, previous, volume_up, volume_down.
+    Actions: play, pause, play_pause, next, previous.
     Repeats of the same action are ignored for a moment, so holding a pose
     does not skip five songs. Remove any cv2.imshow preview window: it does
     not work from a background thread.
@@ -125,7 +125,6 @@ DEFAULT_CONFIG = {
     "spotify_redirect_uri": "http://127.0.0.1:8888/callback",
     "port": 5000,
     "poll_seconds": 2,
-    "volume_step": 10,
     "name": "Gabriel",
     "theme": "dark",
     "show_cursor": True,        # false hides the mouse pointer (nice on a touchscreen)
@@ -144,17 +143,15 @@ DEFAULT_CONFIG = {
 }
 
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
-ACTIONS = ("play", "pause", "play_pause", "next", "previous", "volume_up", "volume_down")
+ACTIONS = ("play", "pause", "play_pause", "next", "previous")
 VIEWS = ("home", "lyrics", "assistant", "toggle_view")   # screen switches; trigger() handles them without Spotify
-COOLDOWN = {"volume_up": 0.3, "volume_down": 0.3, "home": 0.3, "lyrics": 0.3, "assistant": 0.3}   # seconds; others use 1.0
+COOLDOWN = {"home": 0.3, "lyrics": 0.3, "assistant": 0.3}   # seconds; others use 1.0
 LABELS = {
     "play": "Play",
     "pause": "Pause",
     "play_pause": "Play / pause",
     "next": "Next",
     "previous": "Previous",
-    "volume_up": "Volume up",
-    "volume_down": "Volume down",
 }
 
 
@@ -175,8 +172,6 @@ class Hub:
             "progress_ms": 0,
             "duration_ms": 0,
             "device": None,
-            "volume": None,
-            "supports_volume": False,
             "error": None,
             # plug-in and weather problems, kept apart from "error", which every Spotify poll clears
             "gestures_error": None,
@@ -271,7 +266,7 @@ class DemoPlayer:
     ]
 
     def __init__(self):
-        self.i, self.playing, self.vol = 0, True, 50
+        self.i, self.playing = 0, True
         self.pos, self.stamp = 0.0, time.time()
 
     def _advance(self):
@@ -288,7 +283,7 @@ class DemoPlayer:
         return {
             "is_playing": self.playing,
             "progress_ms": int(self.pos),
-            "device": {"name": "Demo phone", "volume_percent": self.vol, "supports_volume": True},
+            "device": {"name": "Demo phone"},
             "item": {"name": title, "uri": f"demo:{self.i}", "duration_ms": dur, "artists": [{"name": artist}],
                      "album": {"name": album, "images": []}},
         }
@@ -318,9 +313,6 @@ class DemoPlayer:
 
     def previous_track(self):
         self.i = (self.i - 1) % len(self.TRACKS); self.pos = 0.0; self.stamp = time.time()
-
-    def volume(self, percent):
-        self.vol = percent
 
 
 def connect_spotify(cfg):
@@ -366,9 +358,7 @@ def read_playback(pb):
     if not pb or not pb.get("item"):
         device = (pb or {}).get("device") or {}
         hub.set_playback(connected=True, playing=False, title=None, artist=None, album=None,
-                         art=None, progress_ms=0, duration_ms=0, device=device.get("name"),
-                         volume=device.get("volume_percent"),
-                         supports_volume=bool(device.get("supports_volume")), error=None)
+                         art=None, progress_ms=0, duration_ms=0, device=device.get("name"), error=None)
         return
     item = pb["item"]
     device = pb.get("device") or {}
@@ -390,8 +380,6 @@ def read_playback(pb):
         progress_ms=pb.get("progress_ms") or 0,
         duration_ms=item.get("duration_ms") or 0,
         device=device.get("name"),
-        volume=device.get("volume_percent"),
-        supports_volume=bool(device.get("supports_volume")),
         error=None,
     )
 
@@ -410,7 +398,7 @@ def poll_loop(sp, sp_lock, poll_seconds):
         refresh_now.clear()
 
 
-def action_loop(sp, sp_lock, volume_step):
+def action_loop(sp, sp_lock):
     while True:
         action = actions.get()
         hub.note_action(action)
@@ -432,16 +420,6 @@ def action_loop(sp, sp_lock, volume_step):
                     sp.next_track()
                 elif action == "previous":
                     sp.previous_track()
-                else:
-                    if not hub.get("supports_volume"):
-                        hub.update(error="This device does not allow remote volume.")
-                        continue
-                    current = hub.get("volume") or 0
-                    step = volume_step if action == "volume_up" else -volume_step
-                    target = max(0, min(100, current + step))
-                    sp.volume(target)
-                    hub.update(volume=target)
-                    hub.show(f"Volume {target}%")
             # optimistic update so the screen reacts before Spotify confirms
             if action in ("play", "pause", "play_pause"):
                 hub.set_playback(playing=want, progress_ms=hub.snapshot()["progress_ms"])
@@ -1297,19 +1275,7 @@ PAGE = r"""<!doctype html>
   #art img { width: 100%; height: 100%; object-fit: cover; display: none; }
   #art.has-img svg { display: none; }
   #art.has-img img { display: block; }
-  .artRow { display: flex; gap: 8px; height: 300px; }
   #art { flex-shrink: 0; }
-  /* volume: + / level / - in the strip right of the cover */
-  #volume { width: 44px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  #volume button { width: 44px; height: 56px; flex-shrink: 0; border-radius: 12px; padding: 0;
-                   border: 1px solid var(--line); background: var(--panel); display: grid; place-items: center;
-                   cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  #volume button:active { transform: scale(0.94); background: var(--line); }
-  #volume button svg { width: 22px; height: 22px; stroke: var(--text); }
-  #volBar { flex-grow: 1; width: 8px; border-radius: 4px; background: var(--track); overflow: hidden;
-            display: flex; flex-direction: column; justify-content: flex-end; }
-  #volFill { width: 100%; height: 0; background: var(--accent); border-radius: 4px; transition: height 0.25s; }
-  #volume.off { opacity: 0.35; }
   #song { display: flex; flex-direction: column; gap: 2px; }
   #title { font-size: 30px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #artist { font-size: 21px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1418,22 +1384,11 @@ PAGE = r"""<!doctype html>
     </div>
 
     <div class="right">
-      <div class="artRow">
-        <div id="art" role="button" aria-label="Song picture">
-          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>
-          </svg>
-          <img id="cover" alt="">
-        </div>
-        <div id="volume">
-          <button id="volUp" type="button" aria-label="Volume up">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-          </button>
-          <div id="volBar"><div id="volFill"></div></div>
-          <button id="volDown" type="button" aria-label="Volume down">
-            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
-          </button>
-        </div>
+      <div id="art" role="button" aria-label="Song picture">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>
+        </svg>
+        <img id="cover" alt="">
       </div>
       <div id="song">
         <div id="title">Nothing playing</div>
@@ -1818,8 +1773,6 @@ function render(s) {
   renderChat(s.chat || []);
   renderLyricsPage(s);
   renderVoice(s.voice_state);
-  $("volume").classList.toggle("off", !s.supports_volume);
-  $("volFill").style.height = (s.volume == null ? 0 : s.volume) + "%";
   $("title").textContent = s.title || "Nothing playing";
   $("artist").textContent = s.title ? (s.artist || "") : "Start a song on your phone";
   const cover = $("cover");
@@ -1849,10 +1802,6 @@ async function tick() {
 $("art").addEventListener("click", () => setView("lyrics"));
 $("lyArt").addEventListener("click", () => setView("home"));
 $("lyCover").addEventListener("error", () => $("lyArt").classList.remove("has-img"));
-for (const [id, action] of [["volUp", "volume_up"], ["volDown", "volume_down"]])
-  $(id).addEventListener("click", () => {
-    fetch("/api/action/" + action, {method: "POST"}).then(tick).catch(() => toast("Dashboard not reachable"));
-  });
 $("mic").addEventListener("click", () => setView("assistant"));
 $("aiBack").addEventListener("click", () => setView("home"));
 $("talk").addEventListener("click", async () => {
@@ -1928,7 +1877,7 @@ def main():
     sp_lock = threading.Lock()
     threading.Thread(target=poll_loop, args=(sp, sp_lock, cfg["poll_seconds"]),
                      name="spotify-poll", daemon=True).start()
-    threading.Thread(target=action_loop, args=(sp, sp_lock, cfg["volume_step"]),
+    threading.Thread(target=action_loop, args=(sp, sp_lock),
                      name="spotify-actions", daemon=True).start()
     player.update(sp=sp, lock=sp_lock, device=str(cfg["spotify_device"]))
     if cfg["openweather_api_key"]:

@@ -33,8 +33,8 @@ background threads do the work so a slow network call never freezes the screen.
 - `poll_loop`: polls Spotify playback, backs off on errors and rate limits.
 - `action_loop`: runs playback actions from a queue.
 - `trigger(action)`: the entry point for gestures. Actions are `play`, `pause`,
-  `play_pause`, `next`, `previous`, `volume_up`, `volume_down`. Repeats are
-  ignored for a moment (1s, or 0.3s for volume). `play`/`pause` skip the
+  `play_pause`, `next`, `previous` (plus the view switches). Repeats are
+  ignored for a moment (1s). `play`/`pause` skip the
   Spotify call when it is already in that state.
 - `gestures.py` (stage 2, done): the owner's `spotify_gesture.py` from
   `Documents\CarPi\HAND GESTURE`, wrapped as `run(trigger)` and started in a
@@ -141,10 +141,10 @@ background threads do the work so a slow network call never freezes the screen.
   the phone page). Keep `certs/ca-key.pem` private: a phone that trusts the CA
   would trust anything signed with it. Not yet confirmed on the owner's
   iPhone. Sharing stops when the phone locks.
-- Volume control (owner asked for on-screen buttons here): a 44px strip right
-  of the 300px cover art with +, a level bar (`Hub.volume`) and -, posting
-  `volume_up`/`volume_down`. Dimmed when the device reports no remote volume
-  (iPhones usually). Each change flashes "Volume N%".
+- No volume control at all (owner asked to remove it fully): the on-screen
+  +/- strip, `volume_up`/`volume_down` actions, `Hub.volume`/`supports_volume`,
+  config `volume_step` and Claude's volume controls are gone. The song
+  picture stays 300x300 at the left of its column.
 - Lyrics page (stage 4, done): `lyrics.py` `Lyrics` thread watches the song
   in `Hub` and asks LRCLIB (`/api/get` with title, first artist, album and
   length, then `/api/search` with the title as is and without " - Remastered",
