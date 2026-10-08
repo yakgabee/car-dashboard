@@ -131,6 +131,7 @@ background threads do the work so a slow network call never freezes the screen.
   bar, text and directions. `GET|POST|DELETE /api/colors` (`#rrggbb` only),
   saved to `colors.json` and sent to the screen in `/api/state` as `colors`.
   Unset colors fall back to the theme; "Reset colors" clears them all.
+- `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
 - `--demo` runs with fake songs and no Spotify. `--kiosk` opens Chromium.
 - First run writes `config.json` (Spotify client ID and secret go there).
 

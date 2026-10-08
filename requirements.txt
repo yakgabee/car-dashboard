@@ -1,0 +1,23 @@
+# Car Pi dashboard. Install with: pip install -r requirements.txt
+# On the Pi: 64-bit Raspberry Pi OS (for mediapipe), and first
+#   sudo apt install libportaudio2   (for sounddevice)
+# Vosk and Piper voice models are not pip packages; they live in models/.
+
+# Screen, phone page, Spotify, weather, maps
+flask
+requests
+spotipy
+cryptography
+
+# Claude assistant
+anthropic
+
+# Hand gestures (gestures.py)
+mediapipe
+opencv-python
+numpy
+
+# Voice (voice.py)
+vosk
+sounddevice
+piper-tts
