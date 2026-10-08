@@ -46,8 +46,9 @@ background threads do the work so a slow network call never freezes the screen.
   delay, not a 1 s hold), and fires once until the hand drops or changes
   (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
   on screen via `Hub.gestures_error`. `python3 gestures.py` is a stand-alone
-  test with a preview window. Needs `pip install mediapipe opencv-python`;
-  on the Pi that means 64-bit Raspberry Pi OS. Not yet tested on the Pi.
+  test with a preview window. Needs mediapipe (install.sh), 64-bit Raspberry
+  Pi OS, and the libegl1 + libgles2 system libraries (mediapipe 1.x loads
+  libEGL.so.1 and libGLESv2.so.2; found in a fresh-install smoke test). Not yet tested on the Pi.
   No volume gestures yet.
 - Weather (stage 3, done): `weather_loop` polls OpenWeather current weather
   every 10 min for `weather_city` (Toronto,CA). Key in config.json as
@@ -185,7 +186,7 @@ background threads do the work so a slow network call never freezes the screen.
   copy, restart); NOT tested on a Pi.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
   `install.sh` (owner asked) does the whole setup: apt (python3-venv,
-  python3-dev, libportaudio2, libgl1, curl, Chromium if missing), `.venv`,
+  python3-dev, libportaudio2, libgl1, libegl1, libgles2, curl, Chromium if missing), `.venv`,
   pip in groups so one failure (usually mediapipe) doesn't stop the rest,
   then an import check with a summary. Its package list mirrors
   requirements.txt; keep them in step. No `opencv-python`: mediapipe pulls
@@ -194,6 +195,12 @@ background threads do the work so a slow network call never freezes the screen.
   which needs the apt PortAudio library. NOT tested on a Pi.
 - `--demo` runs with fake songs and no Spotify. `--kiosk` opens Chromium.
 - First run writes `config.json` (Spotify client ID and secret go there).
+- `.gitattributes` keeps `*.sh` at LF so the scripts still run if the repo
+  passes through the owner's Windows PC.
+- Pi readiness smoke test (sandbox, x86_64, no config.json, real modules from
+  install.sh): every page and endpoint answers on 5000 and https 5443; with
+  the apt libraries present, gestures stops only at "camera 0 not found" and
+  voice at "Error querying device -1" (no mic), both shown on screen.
 
 Tested: demo mode, the HTTP endpoints, the gesture plug-in, error handling
 against a stand-in for Spotipy, layout at 800x480, 1024x600 and 1280x720.

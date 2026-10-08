@@ -49,7 +49,7 @@ from piper import PiperVoice
 HERE = Path(__file__).resolve().parent
 VOSK_MODEL = HERE / "models" / "vosk-model-small-en-us-0.15"
 VOICES = HERE / "models"
-DEFAULT_VOICE = "en_US-lessac-medium"   # config.json "piper_voice" picks another one in models/
+DEFAULT_VOICE = "en_US-ryan-medium"   # config.json "piper_voice" picks another one in models/
 
 COMMAND_WAIT_S = 8      # after the button or a bare "Hey Bitch", how long to wait for the command
 

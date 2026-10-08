@@ -20,7 +20,7 @@ if [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
 fi
 
 echo "== Installing system packages (asks for your password)"
-PKGS="python3-venv python3-dev libportaudio2 libgl1 curl"
+PKGS="python3-venv python3-dev libportaudio2 libgl1 libegl1 libgles2 curl"   # libegl1/libgles2: mediapipe needs them
 if ! command -v chromium-browser >/dev/null && ! command -v chromium >/dev/null; then
     if apt-cache show chromium >/dev/null 2>&1; then PKGS="$PKGS chromium"; else PKGS="$PKGS chromium-browser"; fi
 fi

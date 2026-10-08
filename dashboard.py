@@ -136,7 +136,7 @@ DEFAULT_CONFIG = {
     "anthropic_api_key": "",
     "claude_model": "claude-haiku-5-5",
     "timezone": "America/Toronto",
-    "piper_voice": "en_US-lessac-medium",   # any Piper voice in models/ (.onnx + .onnx.json)
+    "piper_voice": "en_US-ryan-medium",   # any Piper voice in models/ (.onnx + .onnx.json)
     "https_port": 5443,
     "mapbox_token": "",
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
