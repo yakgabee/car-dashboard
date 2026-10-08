@@ -1534,7 +1534,7 @@ function applyColors(colors) {
   }
 }
 const VOICE_HINTS = {
-  off: "Voice is off", idle: "Tap and say a song", listening: "Listening…", working: "One moment…",
+  off: "Voice is off", idle: "", listening: "Listening…", working: "One moment…",
 };
 function renderVoice(state) {
   const mic = $("mic");
