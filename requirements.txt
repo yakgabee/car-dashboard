@@ -1,4 +1,0 @@
-mediapipe>=0.10.14
-opencv-python>=4.8
-spotipy>=2.24
-python-dotenv>=1.0
