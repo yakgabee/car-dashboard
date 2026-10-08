@@ -11,9 +11,10 @@ fires once. To repeat it (for example, to skip twice), drop your
 hand or change gestures, then make it again.
 
 dashboard.py starts this by calling run(trigger). It has no window there.
-To test the camera on its own, with a preview window and no Spotify:
-    python3 gestures.py              # press q in the window to quit
-    python3 gestures.py --camera 1
+To test the camera on its own, with a preview window and no Spotify
+(on the Pi use the .venv Python, from a terminal on the Pi's desktop):
+    .venv/bin/python gestures.py              # press q in the window to quit
+    .venv/bin/python gestures.py --camera 1
 Without --camera it uses "camera" from config.json, like the dashboard.
 """
 
@@ -21,6 +22,7 @@ import argparse
 import json
 import math
 import os
+import sys
 import time
 
 import cv2
@@ -107,13 +109,48 @@ class Gestures:
         return due
 
 
+def try_camera(index):
+    """The camera at index if it opens and sends a picture, else None."""
+    # Linux (the Pi): ask V4L2 directly; the default may pick a backend that can't open USB cameras
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2) if sys.platform.startswith("linux") else cv2.VideoCapture(index)
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_SIZE[0])
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_SIZE[1])
+        for _ in range(10):     # some cameras send a few empty frames while starting
+            if cap.read()[0]:
+                return cap
+            time.sleep(0.05)
+    cap.release()
+    return None
+
+
+def dashboard_running():
+    """True if start.sh (the dashboard) is running; it holds the camera then."""
+    try:
+        import fcntl
+        with open(os.path.join(HERE, "logs", "start.lock")) as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return False
+    except BlockingIOError:
+        return True
+    except (OSError, ImportError):
+        return False
+
+
 def open_camera(index):
-    cap = cv2.VideoCapture(index)
-    if not cap.isOpened():
-        raise RuntimeError(f"camera {index} not found")
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_SIZE[0])
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_SIZE[1])
-    return cap
+    """The configured camera, or else the first one that works (a config.json copied
+    from the PC may name the PC's camera, e.g. OBS Virtual Camera = 1)."""
+    cap = try_camera(index)
+    if cap:
+        return cap
+    for other in range(10):
+        if other != index and (cap := try_camera(other)):
+            print(f"[gestures] camera {index} didn't work, using camera {other}. "
+                  f'Put "camera": {other} in config.json.')
+            return cap
+    if dashboard_running():
+        raise RuntimeError(f"camera {index} is busy: the dashboard is running and using it. Stop it first")
+    raise RuntimeError(f"camera {index} not found (no working camera; is it plugged in?)")
 
 
 def make_landmarker():
@@ -205,12 +242,18 @@ def main():
     args = parser.parse_args()
     if args.camera is None:
         args.camera = configured_camera()
+    if sys.platform.startswith("linux"):
+        if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            sys.exit("No screen to show the window on. Run this in a terminal on the Pi's desktop, not over SSH.")
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")     # OpenCV's window only knows X11; the Pi desktop runs it via XWayland
     print(f"Using camera {args.camera}.")
     print("Gesture test: no Spotify. Press q in the window (or Ctrl+C) to quit.")
     try:
         watch(lambda name: print(f"-> {name}"), camera=args.camera, show=True)
     except KeyboardInterrupt:
         pass
+    except RuntimeError as err:
+        sys.exit(f"Problem: {err}.")
 
 
 if __name__ == "__main__":

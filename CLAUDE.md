@@ -46,7 +46,13 @@ background threads do the work so a slow network call never freezes the screen.
   delay, not a 1 s hold), and fires once until the hand drops or changes
   (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
   on screen via `Hub.gestures_error`. `python3 gestures.py` is a stand-alone
-  test with a preview window. Needs mediapipe (install.sh), 64-bit Raspberry
+  test with a preview window (on the Pi: `.venv/bin/python gestures.py` from a
+  desktop terminal; it exits with a message over SSH and sets QT_QPA_PLATFORM=xcb
+  for OpenCV's window). `open_camera` uses V4L2 on Linux, needs a real frame, and
+  if the configured camera fails tries 0-9 and says which works (a config.json
+  copied from the PC says camera 1 = OBS); if none works and start.sh's lock is
+  held it says the dashboard is using the camera. Owner reported OpenCV not
+  opening right on the Pi (no error text given); these are the guessed causes. Needs mediapipe (install.sh), 64-bit Raspberry
   Pi OS, and the libegl1 + libgles2 system libraries (mediapipe 1.x loads
   libEGL.so.1 and libGLESv2.so.2; found in a fresh-install smoke test). Not yet tested on the Pi.
   No volume gestures: point up/down for volume was built and removed (owner
