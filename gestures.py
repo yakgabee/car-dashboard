@@ -5,10 +5,13 @@
     Fist                                -> pause
     2 fingers (index/middle) right      -> next
     2 fingers (index/middle) left       -> previous
+    Index finger pointing up            -> volume up
+    Index finger pointing down          -> volume down
 
 Each gesture is carried out one second after it is recognised. Each gesture
 fires once. To repeat it (for example, to skip twice), drop your
-hand or change gestures, then make it again.
+hand or change gestures, then make it again. Volume is the exception: keep
+pointing and it keeps going, one step every VOLUME_REPEAT_S.
 
 dashboard.py starts this by calling run(trigger). It has no window there.
 To test the camera on its own, with a preview window and no Spotify:
@@ -47,6 +50,8 @@ INDEX_MCP, PINKY_MCP = 5, 17
 STABLE_FRAMES = 6  # frames a gesture must be held before it counts as recognised
 DELAY_S = 1.0  # a recognised gesture is carried out this many seconds later
 COOLDOWN_S = 1.0  # minimum time between recognised gestures
+VOLUME_REPEAT_S = 0.6  # holding a volume point repeats it this often
+REPEATING = ("volume_up", "volume_down")
 MAX_FAILED_READS = 30  # camera frames in a row that may fail before giving up
 
 
@@ -61,7 +66,7 @@ def finger_extended(lm, name):
 
 
 def classify(lm):
-    """Return 'play', 'pause', 'next', 'previous' or None for a list of 21 landmarks."""
+    """Return 'play', 'pause', 'next', 'previous', 'volume_up', 'volume_down' or None for 21 landmarks."""
     ext = {name: finger_extended(lm, name) for name in FINGERS}
 
     if not any(ext.values()):
@@ -78,6 +83,13 @@ def classify(lm):
         dy = lm[12].y - knuckles_y
         if abs(dx) > abs(dy) * 1.2:  # mostly horizontal
             return "next" if dx > 0 else "previous"
+
+    if ext["index"] and not ext["middle"] and not ext["ring"] and not ext["pinky"]:
+        # Pointing with the index finger alone: from its knuckle to its tip. Image y grows downward.
+        dx = lm[8].x - lm[INDEX_MCP].x
+        dy = lm[8].y - lm[INDEX_MCP].y
+        if abs(dy) > abs(dx) * 1.2:  # mostly vertical
+            return "volume_up" if dy < 0 else "volume_down"
 
     return None
 
@@ -98,10 +110,13 @@ class Gestures:
             self.candidate, self.count = gesture, 1
         if self.candidate is None and self.count >= STABLE_FRAMES:
             self.last_fired = None  # hand gone / neutral: allow the same gesture to fire again
-        elif (self.candidate is not None and self.count >= STABLE_FRAMES
-              and self.candidate != self.last_fired and now - self.last_fired_at > COOLDOWN_S):
-            self.last_fired, self.last_fired_at = self.candidate, now
-            self.waiting.append((now + DELAY_S, self.candidate))
+        elif self.candidate is not None and self.count >= STABLE_FRAMES:
+            new = self.candidate != self.last_fired and now - self.last_fired_at > COOLDOWN_S
+            held = (self.candidate in REPEATING and self.candidate == self.last_fired
+                    and now - self.last_fired_at >= VOLUME_REPEAT_S)     # keep pointing: keep changing volume
+            if new or held:
+                self.last_fired, self.last_fired_at = self.candidate, now
+                self.waiting.append((now + DELAY_S, self.candidate))
         due = [g for t, g in self.waiting if t <= now]
         self.waiting = [(t, g) for t, g in self.waiting if t > now]
         return due

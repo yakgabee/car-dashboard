@@ -49,7 +49,11 @@ background threads do the work so a slow network call never freezes the screen.
   test with a preview window. Needs mediapipe (install.sh), 64-bit Raspberry
   Pi OS, and the libegl1 + libgles2 system libraries (mediapipe 1.x loads
   libEGL.so.1 and libGLESv2.so.2; found in a fresh-install smoke test). Not yet tested on the Pi.
-  No volume gestures yet.
+  Volume (owner asked): index finger alone pointing up/down (knuckle 5 ->
+  tip 8 mostly vertical) = volume_up/volume_down. Holding the point repeats
+  every `VOLUME_REPEAT_S` 0.6 s (`REPEATING`); other gestures still fire
+  once. Same 1 s delay. Tested with synthetic landmarks (up, down, tilted,
+  sideways = nothing, the old gestures unchanged) and the timing class.
 - Weather (stage 3, done): `weather_loop` polls OpenWeather current weather
   every 10 min for `weather_city` (Toronto,CA). Key in config.json as
   `openweather_api_key`. Header shows an icon and the temperature; problems go
@@ -330,7 +334,7 @@ because the car may be offline):
 
 - Is the 7-inch display a touchscreen, and what is its resolution?
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
-- Gestures for volume up/down (play, pause, next, previous are decided).
+- Gestures: all decided (volume = point up/down with the index finger).
 - Assistant start: wake phrase chosen ("hey bitch").
 - Direction strip on the lyrics page: added, only while a route is active
   (chosen while building; easy to drop).
