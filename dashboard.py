@@ -139,6 +139,7 @@ DEFAULT_CONFIG = {
     "piper_voice": "en_US-ryan-medium",   # any Piper voice in models/ (.onnx + .onnx.json)
     "https_port": 5443,
     "mapbox_token": "",
+    "spotify_device": "",       # part of a device name to prefer when nothing is playing, e.g. "iPhone"
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
@@ -288,14 +289,17 @@ class DemoPlayer:
             "is_playing": self.playing,
             "progress_ms": int(self.pos),
             "device": {"name": "Demo phone", "volume_percent": self.vol, "supports_volume": True},
-            "item": {"name": title, "duration_ms": dur, "artists": [{"name": artist}],
+            "item": {"name": title, "uri": f"demo:{self.i}", "duration_ms": dur, "artists": [{"name": artist}],
                      "album": {"name": album, "images": []}},
         }
+
+    def devices(self):
+        return {"devices": [{"id": "demo", "name": "Demo phone", "is_active": True, "is_restricted": False}]}
 
     def pause_playback(self):
         self._advance(); self.playing = False
 
-    def start_playback(self, uris=None):
+    def start_playback(self, device_id=None, uris=None):
         self._advance(); self.playing = True
         if uris:
             self.i = int(uris[0].split(":")[-1]); self.pos = 0.0
@@ -336,6 +340,8 @@ def connect_spotify(cfg):
 
 def explain(err):
     """Turn an exception into a short message for the screen, plus seconds to wait."""
+    if isinstance(err, NoDevice):
+        return str(err), 5
     status = getattr(err, "http_status", None)
     if status == 429:
         headers = getattr(err, "headers", None) or {}
@@ -411,7 +417,10 @@ def action_loop(sp, sp_lock, volume_step):
                     playing = hub.get("playing")
                     want = not playing if action == "play_pause" else action == "play"
                     if want != playing:     # Spotify refuses "play" while already playing
-                        sp.start_playback() if want else sp.pause_playback()
+                        if want:
+                            sp.start_playback(device_id=pick_device(sp)["id"])
+                        else:
+                            sp.pause_playback()
                 elif action == "next":
                     sp.next_track()
                 elif action == "previous":
@@ -435,7 +444,23 @@ def action_loop(sp, sp_lock, volume_step):
         refresh_now.set()
 
 
-player = {"sp": None, "lock": None}     # set in main(); voice commands use it
+player = {"sp": None, "lock": None, "device": ""}     # set in main(); voice commands use it
+
+
+class NoDevice(Exception):
+    """No Spotify app is open anywhere, so there is nothing to play on."""
+
+
+def pick_device(sp):
+    """The device to play on. Without one named, Spotify may send the song to a device that is
+    asleep or gone and still answer OK. Active device first, then "spotify_device", then any."""
+    devices = [d for d in sp.devices().get("devices", []) if not d.get("is_restricted")]
+    if not devices:
+        raise NoDevice("Open Spotify on your phone or computer first.")
+    wanted = player["device"].lower()
+    return (next((d for d in devices if d.get("is_active")), None)
+            or next((d for d in devices if wanted and wanted in (d.get("name") or "").lower()), None)
+            or devices[0])
 
 
 def play_song(query):
@@ -456,16 +481,36 @@ def play_song(query):
             if not items:
                 return f"I couldn't find {query}."
             track = items[0]
-            sp.start_playback(uris=[track["uri"]])
+            device = pick_device(sp)
+            sp.start_playback(device_id=device["id"], uris=[track["uri"]])
+    except NoDevice as err:
+        hub.update(error=str(err))
+        return str(err)
     except Exception as err:
         message = explain(err)[0]
         hub.update(error=message)
         return message
     name, by = track["name"], track["artists"][0]["name"] if track["artists"] else ""
-    hub.show(f"Playing {name}")
-    time.sleep(0.4)
+    # Spotify answers OK before the device has done anything: check that the song really started
+    started = False
+    for _ in range(4):
+        time.sleep(0.75)
+        try:
+            with sp_lock:
+                pb = sp.current_playback()
+        except Exception:
+            continue
+        if pb and pb.get("is_playing") and (pb.get("item") or {}).get("uri") == track["uri"]:
+            started = True
+            break
     refresh_now.set()
-    return f"Playing {name} by {by}." if by else f"Playing {name}."
+    where = device.get("name") or "your device"
+    if not started:
+        message = f"Spotify didn't start {name} on {where}. Open Spotify there and try again."
+        hub.update(error=message)
+        return message
+    hub.show(f"Playing {name}")
+    return f"Playing {name} by {by} on {where}." if by else f"Playing {name} on {where}."
 
 
 lyrics = {"source": None}       # lyrics.Lyrics, set in main()
@@ -1840,7 +1885,7 @@ def main():
                      name="spotify-poll", daemon=True).start()
     threading.Thread(target=action_loop, args=(sp, sp_lock, cfg["volume_step"]),
                      name="spotify-actions", daemon=True).start()
-    player.update(sp=sp, lock=sp_lock)
+    player.update(sp=sp, lock=sp_lock, device=str(cfg["spotify_device"]))
     if cfg["openweather_api_key"]:
         threading.Thread(target=weather_loop, args=(cfg,), name="weather", daemon=True).start()
     else:

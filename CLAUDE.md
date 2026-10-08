@@ -96,6 +96,15 @@ background threads do the work so a slow network call never freezes the screen.
   Default now `en_US-ryan-medium` (owner chose US male). `en_US-ryan-high`
   is also downloaded but took ~4.7 s per sentence on the PC (too slow for a
   Pi); medium takes ~1 s.
+- Spotify device (owner hit it: "Playing Quebec by Drake" shown, nothing
+  played): `play_song` and the play action now name the device. `pick_device`
+  takes the active device, else one whose name contains config
+  `"spotify_device"` (e.g. "iPhone"), else the first; none at all ->
+  "Open Spotify on your phone or computer first." (`NoDevice`). After
+  `start_playback`, `play_song` polls `current_playback` up to 4 x 0.75 s and
+  only says "Playing X by Y on <device>." when that track is really playing,
+  otherwise "Spotify didn't start X on <device>...". Tested against a fake
+  Spotify (active, preferred, fallback, never starts, no device) and demo.
 - Voice navigation: "take me to / navigate to / directions to <place>" sets
   the destination (`navigate()`).
 - Map and turn-by-turn (stage 5, done): `navigation.py` `Navigator` thread
