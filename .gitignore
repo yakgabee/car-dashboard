@@ -5,3 +5,5 @@ __pycache__/
 certs/
 
 models/en_US-ryan-high.onnx
+logs/
+.venv/

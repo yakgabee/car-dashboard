@@ -4,10 +4,11 @@ Car dashboard: greeting, clock, weather, now playing, album art, map and
 next-direction placeholders, hand gestures and voice commands.
 
 SETUP (on the Pi)
-    pip install -r requirements.txt
-    python3 dashboard.py --demo      # test the screen with fake songs first
+    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+    .venv/bin/python dashboard.py --demo   # test the screen with fake songs first
     python3 dashboard.py             # first run writes config.json, fill it in
     python3 dashboard.py --kiosk     # also opens Chromium full screen
+    ./install_autostart.sh           # start by itself, full screen, every time the Pi starts
 
 SCREEN
     config.json sets "name" (the greeting) and "theme" ("dark" or "light").

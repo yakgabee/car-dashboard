@@ -171,6 +171,18 @@ background threads do the work so a slow network call never freezes the screen.
   background with CSS color-mix). `GET|POST|DELETE /api/colors` (`#rrggbb` only),
   saved to `colors.json` and sent to the screen in `/api/state` as `colors`.
   Unset colors fall back to the theme; "Reset colors" clears them all.
+- Start on boot (owner asked): `install_autostart.sh` (run once on the Pi;
+  `--remove` undoes it) writes `~/.config/autostart/car-dashboard.desktop`
+  (XDG autostart, honoured by the Pi desktop on labwc, wayfire and X11) and
+  turns off screen blanking with `raspi-config nonint do_blanking 1`.
+  `start.sh` holds a `flock` on `logs/start.lock` (one copy only), runs
+  dashboard.py with `.venv/bin/python` if present (Pi OS blocks plain pip),
+  restarts it 5 s after it stops, waits up to 120 s for the page, then runs
+  Chromium `--kiosk` (chromium-browser or chromium; `--password-store=basic`
+  avoids the keyring prompt) and reopens it if closed. Logs in `logs/`.
+  Needs desktop autologin, an existing config.json and a cached Spotify
+  login. Tested in the sandbox with a stand-in Chromium (launch, single
+  copy, restart); NOT tested on a Pi.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
 - `--demo` runs with fake songs and no Spotify. `--kiosk` opens Chromium.
 - First run writes `config.json` (Spotify client ID and secret go there).
@@ -247,7 +259,8 @@ because the car may be offline):
 5. Map: done (phone page for destination and position, Mapbox route, Leaflet map).
 6. Voice: music by voice is done (`voice.py`). Questions to Ollama next.
 7. Car install: power and clean shutdown are handled by the owner (don't
-   plan them). Start on boot and the dash mounting plate are still open.
+   plan them). Start on boot: done (`start.sh`, `install_autostart.sh`).
+   The dash mounting plate is still open.
 
 ## Constraints already researched
 

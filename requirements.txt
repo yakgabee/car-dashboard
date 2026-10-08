@@ -1,4 +1,8 @@
 # Car Pi dashboard. Install with: pip install -r requirements.txt
+# On Raspberry Pi OS, plain pip is blocked; use a virtual environment here
+# (start.sh uses it automatically):
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
 # On the Pi: 64-bit Raspberry Pi OS (for mediapipe), and first
 #   sudo apt install libportaudio2   (for sounddevice)
 # Vosk and Piper voice models are not pip packages; they live in models/.
