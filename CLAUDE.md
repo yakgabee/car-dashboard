@@ -246,7 +246,8 @@ because the car may be offline):
 4. Lyrics page and the tap to switch. Done.
 5. Map: done (phone page for destination and position, Mapbox route, Leaflet map).
 6. Voice: music by voice is done (`voice.py`). Questions to Ollama next.
-7. Car install: power, start on boot, clean shutdown, mounting.
+7. Car install: power and clean shutdown are handled by the owner (don't
+   plan them). Start on boot and the dash mounting plate are still open.
 
 ## Constraints already researched
 
