@@ -111,9 +111,11 @@ COLORS_PATH = HERE / "colors.json"      # colors picked on the phone page
 # Colors the phone page can change. Unset ones use the theme's own color.
 COLOR_DEFAULTS = {
     "dark": {"background": "#0c0f12", "panel": "#151a20", "border": "#252c35",
-             "bar": "#ffb14a", "text": "#f3f5f7", "route": "#5aa9ff"},
+             "bar": "#ffb14a", "text": "#f3f5f7", "route": "#5aa9ff", "car": "#5aa9ff",
+             "lyric": "#ffb14a", "lyrics": "#d3d9e1"},
     "light": {"background": "#eef1f4", "panel": "#ffffff", "border": "#d5dae1",
-              "bar": "#a35400", "text": "#12161b", "route": "#1d6fd1"},
+              "bar": "#a35400", "text": "#12161b", "route": "#1d6fd1", "car": "#1d6fd1",
+              "lyric": "#a35400", "lyrics": "#2a313a"},
 }
 
 DEFAULT_CONFIG = {
@@ -942,7 +944,8 @@ refresh();
 
 const COLOR_LABELS = {
   background: "Background", panel: "Panels", border: "Borders",
-  bar: "Song bar", text: "Text", route: "Directions",
+  bar: "Song bar", text: "Text", route: "Directions", car: "Map arrow",
+  lyric: "Lyrics: current line", lyrics: "Lyrics: other lines",
 };
 const pending = {};
 let sendTimer = null;
@@ -1082,6 +1085,7 @@ PAGE = r"""<!doctype html>
     --art: #1a2028; --art-line: #2a323c; --art-icon: #5b6675; --track: #2a323c; --warn: #ff7a6e;
     --ly-far: #7f8998; --ly-next: #d3d9e1;
   }
+  :root { --car: var(--route); --ly-current: var(--accent); --ly-mid: var(--muted); }
   [data-theme="light"] {
     --bg: #eef1f4; --panel: #ffffff; --line: #d5dae1; --text: #12161b; --muted: #556070;
     --accent: #a35400; --route: #1d6fd1; --on-route: #ffffff; --map: #dde2e8; --map-line: #c9d0d9;
@@ -1136,8 +1140,8 @@ PAGE = r"""<!doctype html>
   #lySynced { display: flex; flex-direction: column; gap: 22px; }
   #lySynced div { font-size: 26px; font-weight: 500; color: var(--ly-far);
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.2em; }
-  #lySynced .l1, #lySynced .l4 { font-size: 28px; color: var(--muted); }
-  #lySynced .l2 { font-size: 46px; font-weight: 700; line-height: 1.12; letter-spacing: -0.01em; color: var(--accent);
+  #lySynced .l1, #lySynced .l4 { font-size: 28px; color: var(--ly-mid); }
+  #lySynced .l2 { font-size: 46px; font-weight: 700; line-height: 1.12; letter-spacing: -0.01em; color: var(--ly-current);
                   white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   #lySynced .l3 { font-size: 30px; font-weight: 600; color: var(--ly-next); }
   #lyPlain { position: absolute; inset: 32px 40px; overflow: hidden; }
@@ -1379,8 +1383,10 @@ ICONS.arrive = ICONS.pin;
 // Phone page color names -> the CSS variables they set
 const COLOR_VARS = {
   background: ["--bg"], panel: ["--panel", "--map", "--art"], border: ["--line", "--map-line", "--art-line"],
-  bar: ["--accent"], text: ["--text", "--ly-next"], route: ["--route"],
+  bar: ["--accent"], text: ["--text", "--ly-next"], route: ["--route"], car: ["--car"], lyric: ["--ly-current"],
 };
+// "Lyrics: other lines": the next line in that color, lines farther away fade into the background
+const LYRICS_VARS = {"--ly-next": 100, "--ly-mid": 72, "--ly-far": 55};
 let lastAction = null, toastTimer = null, misses = 0, shownIcon = null, shownColors = "";
 
 const theme = new URLSearchParams(location.search).get("theme") || SCREEN.theme;
@@ -1439,7 +1445,7 @@ function turnIcon(name) {
 // ---- the map (Leaflet + Mapbox tiles), only when there is a Mapbox token
 let map = null, routeLine = null, car = null, shownRouteId = 0, routeLoading = false;
 const CAR_SVG = '<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#fff"/>' +
-  '<circle cx="17" cy="17" r="12" fill="ROUTE"/><path d="M17 8l6 15-6-3.5-6 3.5z" fill="#fff"/></svg>';
+  '<circle cx="17" cy="17" r="12" style="fill: var(--car)"/><path d="M17 8l6 15-6-3.5-6 3.5z" fill="#fff"/></svg>';
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function setupMap() {
   if (map || !SCREEN.mapbox || !window.L) return;
@@ -1479,9 +1485,8 @@ function renderMap(s) {
   if (fresh) {
     const at = [s.position.lat, s.position.lon];
     const heading = s.position.heading == null ? 0 : s.position.heading;
-    const html = CAR_SVG.replace("ROUTE", cssVar("--route"));
     if (!car) car = L.marker(at, {interactive: false, keyboard: false,
-                                  icon: L.divIcon({className: "car", html, iconSize: [34, 34], iconAnchor: [17, 17]})}).addTo(map);
+                                  icon: L.divIcon({className: "car", html: CAR_SVG, iconSize: [34, 34], iconAnchor: [17, 17]})}).addTo(map);
     car.setLatLng(at);
     const svg = car.getElement() && car.getElement().querySelector("svg");
     if (svg) svg.style.transform = "rotate(" + heading + "deg)";
@@ -1520,6 +1525,11 @@ function applyColors(colors) {
       if (colors && colors[name]) style.setProperty(v, colors[name]);
       else style.removeProperty(v);
     }
+  for (const [v, pct] of Object.entries(LYRICS_VARS)) {
+    if (colors && colors.lyrics) style.setProperty(v, pct === 100 ? colors.lyrics
+      : "color-mix(in srgb, " + colors.lyrics + " " + pct + "%, var(--bg))");
+    else if (v !== "--ly-next" || !(colors && colors.text)) style.removeProperty(v);
+  }
 }
 const VOICE_HINTS = {
   off: "Voice is off", idle: "Tap and say a song", listening: "Listening…", working: "One moment…",

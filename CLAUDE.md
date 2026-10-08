@@ -149,7 +149,10 @@ background threads do the work so a slow network call never freezes the screen.
 - `/phone`: a small page for the phone's browser to set or clear the
   destination until the Expo app exists. Follows the phone's light/dark mode.
   It also has "Screen colors": pickers for background, panels, borders, song
-  bar, text and directions. `GET|POST|DELETE /api/colors` (`#rrggbb` only),
+  bar, text, directions, map arrow (`car`, follows directions until set) and
+  lyrics (`lyric` = current line, follows the song bar; `lyrics` = other
+  lines, the next one in that color and farther ones faded toward the
+  background with CSS color-mix). `GET|POST|DELETE /api/colors` (`#rrggbb` only),
   saved to `colors.json` and sent to the screen in `/api/state` as `colors`.
   Unset colors fall back to the theme; "Reset colors" clears them all.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
