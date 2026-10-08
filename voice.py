@@ -137,6 +137,7 @@ class Listener:
         self.awaiting_until = 0.0
         self.from_button = False
         self.question, self.answered = "", False
+        self.mode = "claude"
 
     def reply(self, text):
         """Answer the request: as text on the Claude page after the button, out loud otherwise."""
@@ -150,9 +151,11 @@ class Listener:
     def awaiting(self):
         return time.monotonic() < self.awaiting_until
 
-    def start_listening(self, from_button):
-        """Wait up to COMMAND_WAIT_S for a command, after the button or a bare wake phrase."""
+    def start_listening(self, from_button, mode="claude"):
+        """Wait up to COMMAND_WAIT_S for a command, after the button or a bare wake phrase.
+        mode "song" (the Spotify button): whatever is said next is a song to play."""
         self.from_button = from_button
+        self.mode = mode if from_button else "claude"
         self.set_state("listening")
         self.show("Listening…")
         if from_button:
@@ -197,6 +200,11 @@ class Listener:
 
     def command(self, rest):
         rest = re.sub(r"^(?:can you |could you |please )", "", rest)
+        if self.from_button and self.mode == "song":    # Spotify button: it's a song, no Claude
+            query = re.sub(r"^(?:play |put on )(?:the song |me )?", "", rest).strip()
+            self.show(f"Finding {query}")
+            self.reply(self.play_song(query))
+            return
         action = COMMANDS.get(re.sub(r"\s+(?:please|the song|song)$", "", rest))
         if action:
             self.trigger(action)
@@ -233,7 +241,7 @@ def recognizer(rate):
     return vosk.KaldiRecognizer(vosk.Model(str(VOSK_MODEL)), rate)
 
 
-def listen(listener, speaker, listen_now=None, announcements=None):
+def listen(listener, speaker, listen_now=None, announcements=None, listen_mode=None):
     """Feed the microphone to Vosk forever. listen_now is set by the screen's mic button;
     announcements is a queue of sentences to speak (turn-by-turn directions)."""
     rate = int(sd.query_devices(kind="input")["default_samplerate"])
@@ -252,7 +260,7 @@ def listen(listener, speaker, listen_now=None, announcements=None):
                 if listener.awaiting and listener.from_button:
                     listener.stop_listening("Cancelled")        # a second tap cancels
                 else:
-                    listener.start_listening(from_button=True)
+                    listener.start_listening(from_button=True, mode=listen_mode() if listen_mode else "claude")
                     rec.Reset()                                 # only what comes after the beep counts
                     while not chunks.empty():
                         chunks.get_nowait()
@@ -281,13 +289,15 @@ def listen(listener, speaker, listen_now=None, announcements=None):
 
 
 def run(trigger, play_song, show, wake_phrase="hey bitch", listen_now=None, set_state=lambda state: None,
-        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None):
+        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None,
+        listen_mode=None):
     """Called by dashboard.py in a background thread. listen_now: the Claude page's talk button.
-    on_text(question, answer): where button answers go (shown on screen, not spoken)."""
+    on_text(question, answer): where button answers go (shown on screen, not spoken).
+    listen_mode(): which button was pressed, "claude" or "song"."""
     speaker = Speaker(voice_name)
     listener = Listener(wake_phrase, speaker, trigger, play_song, show, set_state, navigate, assist, on_text)
     set_state("idle")
-    listen(listener, speaker, listen_now, announcements)
+    listen(listener, speaker, listen_now, announcements, listen_mode)
 
 
 def recognise_file(path):

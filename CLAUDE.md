@@ -165,7 +165,7 @@ background threads do the work so a slow network call never freezes the screen.
   Tested in demo mode at 800x480, 1024x600, 1280x720 and the lookup against
   canned LRCLIB replies; lrclib.net itself was blocked in the build sandbox,
   so NOT yet tested against the real service.
-- Claude page (owner asked): the footer button is now a Claude logo (an
+- Claude page (owner asked): the footer button (now a mic again, see below) opens it; Claude's colour is an
   orange spark, `--claude` #d97757 dark / #c15f3c light) and opens a third
   view, `Hub.view` = "assistant" (`#aiPage`: Back, title, the last 3
   questions and answers, newest large at the bottom, and a big talk button).
@@ -176,6 +176,15 @@ background threads do the work so a slow network call never freezes the screen.
   anything" shows too. The wake phrase still answers out loud. Toasts are
   not shown on the Claude page. Tested with a stand-in mic/speaker and
   screenshots with injected answers; NOT tested with a real microphone.
+- Two buttons on the Claude page (owner asked): Claude (spark, ask anything,
+  as before) and Spotify (green logo): whatever is said after it is a song,
+  "play"/"put on" stripped, sent straight to `play_song` without Claude, and
+  the result shown as text. `POST /api/voice/listen` takes `{"mode":
+  "claude"|"song"}` -> `listen_mode` (+ `Hub.listen_mode` so only the pressed
+  button shows listening/working); voice.py `run(..., listen_mode)` passes it
+  to `Listener.start_listening(mode=)`. The home footer button is a
+  microphone again (owner asked) and still opens the Claude page. Tested
+  with a stand-in mic and screenshots.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.
