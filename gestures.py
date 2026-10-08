@@ -5,6 +5,7 @@
     Fist                                -> pause
     2 fingers (index/middle) right      -> next
     2 fingers (index/middle) left       -> previous
+    Peace sign (2 fingers up)           -> switch hands-free / on-screen buttons
 
 Each gesture is carried out one second after it is recognised. Each gesture
 fires once. To repeat it (for example, to skip twice), drop your
@@ -63,7 +64,7 @@ def finger_extended(lm, name):
 
 
 def classify(lm):
-    """Return 'play', 'pause', 'next', 'previous' or None for a list of 21 landmarks."""
+    """Return 'play', 'pause', 'next', 'previous', 'peace' or None for a list of 21 landmarks."""
     ext = {name: finger_extended(lm, name) for name in FINGERS}
 
     if not any(ext.values()):
@@ -80,6 +81,8 @@ def classify(lm):
         dy = lm[12].y - knuckles_y
         if abs(dx) > abs(dy) * 1.2:  # mostly horizontal
             return "next" if dx > 0 else "previous"
+        if -dy > abs(dx) * 1.2:      # mostly up (image y grows downward): a peace sign
+            return "peace"
 
     return None
 

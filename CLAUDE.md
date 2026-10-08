@@ -41,7 +41,13 @@ background threads do the work so a slow network call never freezes the screen.
   thread. MediaPipe hand landmarker (`hand_landmarker.task` sits next to it),
   camera `"camera"` from config.json (default 0; the owner's OBS Virtual
   Camera on the PC is 1) at 640x480. Open hand = play, fist = pause, two fingers
-  (index + middle) pointing right/left = next/previous. A gesture must hold 6 frames to be
+  (index + middle) pointing right/left = next/previous, the same two fingers
+  pointing up (peace sign) = switch between hands-free and on-screen buttons
+  (owner asked). gestures.py reports "peace"; dashboard `gesture_trigger`
+  (what start_plugin hands to gestures.run) flips `Hub.control_mode`
+  "hands"/"buttons", toasts "Buttons on"/"Hands-free on", and while
+  "buttons" drops every other gesture. Screen buttons, voice and the HTTP
+  API still go through `trigger`. Not saved across restarts (starts "hands"). A gesture must hold 6 frames to be
   recognised, then is carried out 1 s later (`DELAY_S`, owner asked: a
   delay, not a 1 s hold), and fires once until the hand drops or changes
   (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
@@ -165,8 +171,8 @@ background threads do the work so a slow network call never freezes the screen.
   Home: in the footer's right cell under the progress bar (replaces the voice
   hint). Lyrics page: under the progress times; the picture is 300px with
   them and 236px with them plus the route strip. Shown by config
-  `"playback_buttons"`: "auto" (default: only while `Hub.gestures_running`
-  is false, set by `start_plugin` around gestures.run, so --no-gestures, a
+  `"playback_buttons"`: "auto" (default: while `Hub.control_mode` is
+  "buttons" (peace sign) or `Hub.gestures_running` is false, set by `start_plugin` around gestures.run, so --no-gestures, a
   missing library or a failed camera all show them), "always", "never".
   Tested in demo with --no-gestures: all four actions, both pages, with and
   without a route, 1024x600 and 800x480, no overflow.

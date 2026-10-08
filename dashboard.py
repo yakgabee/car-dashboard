@@ -28,6 +28,7 @@ GESTURES
     and hand_landmarker.task in the same folder.
         Open hand -> play          Fist -> pause
         2 fingers right -> next    2 fingers left -> previous
+        Peace sign -> switch between hands-free and on-screen buttons
     Test the camera on its own, with a preview window:  python3 gestures.py
 
     Any gesture code works if it has a function named run:
@@ -176,7 +177,8 @@ class Hub:
             "error": None,
             # plug-in and weather problems, kept apart from "error", which every Spotify poll clears
             "gestures_error": None,
-            "gestures_running": False,  # the gesture camera is working; when not, the screen shows playback buttons
+            "gestures_running": False,
+            "control_mode": "hands",    # "hands" (gestures play music) or "buttons" (on-screen buttons); the peace sign switches  # the gesture camera is working; when not, the screen shows playback buttons
             "voice_error": None,
             "weather_error": None,
             "weather": None,        # {"temp", "main", "night"} from OpenWeather
@@ -234,6 +236,20 @@ actions = queue.Queue()
 refresh_now = threading.Event()
 _last_trigger = {}
 _trigger_lock = threading.Lock()
+
+
+def gesture_trigger(action):
+    """What gestures.py calls. The peace sign switches between hands-free and the on-screen buttons;
+    while the buttons are on, the other gestures are ignored so a stray hand changes nothing."""
+    if action == "peace":
+        with hub.lock:
+            mode = "hands" if hub.data["control_mode"] == "buttons" else "buttons"
+            hub.data["control_mode"] = mode
+        hub.show("Buttons on" if mode == "buttons" else "Hands-free on")
+        return True
+    if hub.get("control_mode") == "buttons":
+        return False
+    return trigger(action)
 
 
 def trigger(action):
@@ -1824,7 +1840,8 @@ function renderLyricsPage(s) {
   $("lyArt").classList.toggle("has-img", !!s.art);
   const t = s.nav && s.next_turn;
   $("lyricsPage").classList.toggle("nav", !!t);
-  const showCtl = SCREEN.buttons === "always" || (SCREEN.buttons !== "never" && !s.gestures_running);
+  const showCtl = SCREEN.buttons === "always" ||
+    (SCREEN.buttons !== "never" && (!s.gestures_running || s.control_mode === "buttons"));
   document.documentElement.classList.toggle("ctls", showCtl);
   $("lyricsPage").classList.toggle("ctls", showCtl);
   for (const id of ["homeCtl", "lyCtl"]) $(id).classList.toggle("playing", !!s.playing);
@@ -1976,7 +1993,7 @@ def main():
     if not args.no_gestures:
         camera = int(cfg["camera"])
         print(f'[dashboard] gesture camera {camera} ("camera" in {CONFIG_PATH})')
-        start_plugin("gestures", trigger, camera)
+        start_plugin("gestures", gesture_trigger, camera)
     if cfg["anthropic_api_key"]:
         try:
             spec = importlib.util.spec_from_file_location("assistant", HERE / "assistant.py")
