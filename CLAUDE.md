@@ -10,6 +10,8 @@ records what was decided, what exists, and what is still open.
 - Build one stage at a time. Do not write the whole project in one go.
 - Plan in lists first, then build the stage that is agreed.
 - Keep it a single Python program that is simple to run on the Pi.
+- Always push finished work to `main` too (the owner pulls from `main`), not
+  only to the working branch. No need to ask first.
 
 ## Hardware
 
