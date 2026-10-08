@@ -40,10 +40,10 @@ background threads do the work so a slow network call never freezes the screen.
   `Documents\CarPi\HAND GESTURE`, wrapped as `run(trigger)` and started in a
   thread. MediaPipe hand landmarker (`hand_landmarker.task` sits next to it),
   camera 0 at 640x480. Open hand = play, fist = pause, two fingers
-  (index + middle) pointing right/left = next/previous. A gesture must be held 1 s (`HOLD_S`,
-  owner asked) and fires once until the hand drops or changes; a reading
-  must last 3 frames to count, so one misread frame doesn't restart the
-  hold (`Hold` class). The preview window shows the hold time. Problems (library missing, no camera) show
+  (index + middle) pointing right/left = next/previous. A gesture must hold 6 frames to be
+  recognised, then is carried out 1 s later (`DELAY_S`, owner asked: a
+  delay, not a 1 s hold), and fires once until the hand drops or changes
+  (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
   on screen via `Hub.gestures_error`. `python3 gestures.py` is a stand-alone
   test with a preview window. Needs `pip install mediapipe opencv-python`;
   on the Pi that means 64-bit Raspberry Pi OS. Not yet tested on the Pi.

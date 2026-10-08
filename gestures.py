@@ -6,8 +6,8 @@
     2 fingers (index/middle) right      -> next
     2 fingers (index/middle) left       -> previous
 
-Hold a gesture for one full second before it fires, so a hand passing by
-does nothing. Each gesture fires once. To repeat it (for example, to skip twice), drop your
+Each gesture is carried out one second after it is recognised. Each gesture
+fires once. To repeat it (for example, to skip twice), drop your
 hand or change gestures, then make it again.
 
 dashboard.py starts this by calling run(trigger). It has no window there.
@@ -42,10 +42,9 @@ FINGERS = {  # name: (pip, tip)
 }
 INDEX_MCP, PINKY_MCP = 5, 17
 
-HOLD_S = 1.0  # seconds a gesture must be held before it fires
-NEUTRAL_S = 0.3  # seconds with no gesture before the same gesture may fire again
-SWITCH_FRAMES = 3  # frames a new reading must last to count; one odd frame doesn't restart the hold
-COOLDOWN_S = 1.0  # minimum time between actions
+STABLE_FRAMES = 6  # frames a gesture must be held before it counts as recognised
+DELAY_S = 1.0  # a recognised gesture is carried out this many seconds later
+COOLDOWN_S = 1.0  # minimum time between recognised gestures
 MAX_FAILED_READS = 30  # camera frames in a row that may fail before giving up
 
 
@@ -81,38 +80,29 @@ def classify(lm):
     return None
 
 
-class Hold:
-    """Turns per-frame readings into actions: a gesture fires after it has been held HOLD_S."""
+class Gestures:
+    """Turns per-frame readings into actions: recognise a held gesture, carry it out DELAY_S later."""
 
     def __init__(self):
-        self.candidate, self.since = None, time.monotonic()
-        self.pending, self.pending_count, self.pending_since = None, 0, 0.0
-        self.last_fired, self.last_fired_at = None, 0.0
-
-    def held(self, now):
-        return now - self.since
+        self.candidate, self.count = None, 0
+        self.last_fired, self.last_fired_at = None, float("-inf")
+        self.waiting = []   # (due time, gesture), oldest first
 
     def update(self, gesture, now):
-        """Feed one frame's reading. Returns the gesture to fire, or None."""
+        """Feed one frame's reading. Returns the gestures whose second is up (usually none)."""
         if gesture == self.candidate:
-            self.pending, self.pending_count = None, 0
+            self.count += 1
         else:
-            if gesture == self.pending:
-                self.pending_count += 1
-            else:
-                self.pending, self.pending_count, self.pending_since = gesture, 1, now
-            if self.pending_count >= SWITCH_FRAMES:     # the hold counts from when it first appeared
-                self.candidate, self.since = self.pending, self.pending_since
-                self.pending, self.pending_count = None, 0
-        held = self.held(now)
-        if self.candidate is None:
-            if held >= NEUTRAL_S:
-                self.last_fired = None  # hand gone / neutral: allow the same gesture to fire again
-            return None
-        if held >= HOLD_S and self.candidate != self.last_fired and now - self.last_fired_at > COOLDOWN_S:
+            self.candidate, self.count = gesture, 1
+        if self.candidate is None and self.count >= STABLE_FRAMES:
+            self.last_fired = None  # hand gone / neutral: allow the same gesture to fire again
+        elif (self.candidate is not None and self.count >= STABLE_FRAMES
+              and self.candidate != self.last_fired and now - self.last_fired_at > COOLDOWN_S):
             self.last_fired, self.last_fired_at = self.candidate, now
-            return self.candidate
-        return None
+            self.waiting.append((now + DELAY_S, self.candidate))
+        due = [g for t, g in self.waiting if t <= now]
+        self.waiting = [(t, g) for t, g in self.waiting if t > now]
+        return due
 
 
 def open_camera(index):
@@ -143,7 +133,7 @@ def watch(on_gesture, camera=CAMERA_INDEX, show=False):
     landmarker = make_landmarker()
     cap = open_camera(camera)
 
-    hold = Hold()
+    gestures = Gestures()
     last_ts = 0
     failed = 0
 
@@ -174,12 +164,13 @@ def watch(on_gesture, camera=CAMERA_INDEX, show=False):
                         cv2.circle(frame, (int(p.x * w), int(p.y * h)), 4, (0, 255, 0), -1)
 
             now = time.monotonic()
-            fire = hold.update(gesture, now)
-            if fire:
-                on_gesture(fire)
+            for name in gestures.update(gesture, now):
+                on_gesture(name)
 
             if show:
-                label = f"{hold.candidate} {min(hold.held(now), HOLD_S):.1f}s" if hold.candidate else "-"
+                label = gesture or "-"
+                if gestures.waiting:
+                    label += f"  ({gestures.waiting[0][1]} in {gestures.waiting[0][0] - now:.1f}s)"
                 cv2.putText(frame, label, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 2)
                 cv2.imshow("Gesture test", frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
