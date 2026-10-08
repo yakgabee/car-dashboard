@@ -159,6 +159,17 @@ background threads do the work so a slow network call never freezes the screen.
   the phone page). Keep `certs/ca-key.pem` private: a phone that trusts the CA
   would trust anything signed with it. Not yet confirmed on the owner's
   iPhone. Sharing stops when the phone locks.
+- Playback buttons (owner asked, "for when the camera isn't there"):
+  previous / play-pause (one toggle, accent colour, icon follows
+  `Hub.playing`) / next, posting the same `/api/action/<name>` as gestures.
+  Home: in the footer's right cell under the progress bar (replaces the voice
+  hint). Lyrics page: under the progress times; the picture is 300px with
+  them and 236px with them plus the route strip. Shown by config
+  `"playback_buttons"`: "auto" (default: only while `Hub.gestures_running`
+  is false, set by `start_plugin` around gestures.run, so --no-gestures, a
+  missing library or a failed camera all show them), "always", "never".
+  Tested in demo with --no-gestures: all four actions, both pages, with and
+  without a route, 1024x600 and 800x480, no overflow.
 - No volume control at all (owner asked to remove it fully): the on-screen
   +/- strip, `volume_up`/`volume_down` actions, `Hub.volume`/`supports_volume`,
   config `volume_step` and Claude's volume controls are gone. The song

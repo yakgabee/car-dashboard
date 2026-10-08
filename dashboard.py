@@ -139,6 +139,7 @@ DEFAULT_CONFIG = {
     "https_port": 5443,
     "mapbox_token": "",
     "spotify_device": "",       # part of a device name to prefer when nothing is playing, e.g. "iPhone"
+    "playback_buttons": "auto",  # previous/play-pause/next on screen: "auto" (only when the gesture camera isn't working), "always", "never"
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
@@ -175,6 +176,7 @@ class Hub:
             "error": None,
             # plug-in and weather problems, kept apart from "error", which every Spotify poll clears
             "gestures_error": None,
+            "gestures_running": False,  # the gesture camera is working; when not, the screen shows playback buttons
             "voice_error": None,
             "weather_error": None,
             "weather": None,        # {"temp", "main", "night"} from OpenWeather
@@ -636,17 +638,25 @@ def start_plugin(name, *args):
             spec = importlib.util.spec_from_file_location(name, path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            if name == "gestures":
+                hub.update(gestures_running=True)
             module.run(*args)
+            if name == "gestures":
+                hub.update(gestures_running=False)
             hub.update(**{f"{name}_error": f"{title} stopped."})
             if name == "voice":
                 hub.update(voice_state="off")
         except ImportError as err:
+            if name == "gestures":
+                hub.update(gestures_running=False)
             print(f"[dashboard] {name} off: {err}")
             hub.update(**{f"{name}_error": f"{title} off: {err.name or 'a library'} is not installed."})
             if name == "voice":
                 hub.update(voice_state="off")
         except Exception as err:
             traceback.print_exc()
+            if name == "gestures":
+                hub.update(gestures_running=False)
             hub.update(**{f"{name}_error": f"{title} stopped: {str(err)[:80]}"})
             if name == "voice":
                 hub.update(voice_state="off")
@@ -660,6 +670,7 @@ def start_plugin(name, *args):
 app = Flask(__name__, static_folder=None)   # /static is served below, from this folder
 screen = {"name": DEFAULT_CONFIG["name"], "theme": DEFAULT_CONFIG["theme"], "cursor": True,
           "mapbox": "",   # set in main(); the Mapbox token is a public one, made for web pages
+          "buttons": "auto",          # playback_buttons from config.json
           "boot": str(time.time())}   # changes at every start: an open page sees it and reloads itself
 
 
@@ -1188,6 +1199,22 @@ PAGE = r"""<!doctype html>
   #lyArt.has-img svg { display: none; }
   #lyArt.has-img img { display: block; }
   #lyricsPage.nav #lyArt { width: 270px; height: 270px; }
+  #lyricsPage.ctls #lyArt { width: 300px; height: 300px; }
+  #lyricsPage.nav.ctls #lyArt { width: 236px; height: 236px; }
+
+  /* playback buttons, shown when the gesture camera isn't working (config "playback_buttons") */
+  .ctl { display: none; align-items: center; justify-content: center; gap: 22px; }
+  html.ctls .ctl { display: flex; }
+  .ctlBtn { width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel);
+            display: grid; place-items: center; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .ctlBtn svg { width: 26px; height: 26px; fill: var(--text); }
+  .ctlBtn:active { transform: scale(0.94); background: var(--line); }
+  .ctlMain { width: 68px; height: 68px; background: var(--accent); border-color: var(--accent); }
+  .ctlMain svg { width: 30px; height: 30px; fill: var(--bg); }
+  .ctlMain .icPause, .playing .ctlMain .icPlay { display: none; }
+  .playing .ctlMain .icPause { display: block; }
+  html.ctls #voiceHint { display: none; }
+  #homeCtl { justify-self: end; width: 352px; }
   .lySong { display: flex; flex-direction: column; gap: 2px; }
   #lyTitle { font-size: 32px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #lyArtist { font-size: 22px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1422,6 +1449,7 @@ PAGE = r"""<!doctype html>
       </svg>
     </button>
     <div id="voiceHint"></div>
+    <div class="ctl" id="homeCtl"><button type="button" class="ctlBtn" data-action="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button><button type="button" class="ctlBtn ctlMain" data-action="play_pause" aria-label="Play or pause"><svg class="icPlay" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L19.5 12z"/></svg><svg class="icPause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z"/></svg></button><button type="button" class="ctlBtn" data-action="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button></div>
   </footer>
 </div>
 
@@ -1441,6 +1469,7 @@ PAGE = r"""<!doctype html>
       <div id="lyBar"><div id="lyFill"></div></div>
       <div class="lyTimes"><span id="lyElapsed">0:00</span><span id="lyLength">0:00</span></div>
     </div>
+    <div class="ctl" id="lyCtl"><button type="button" class="ctlBtn" data-action="previous" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2.5v14H6zM20 5v14L9.5 12z"/></svg></button><button type="button" class="ctlBtn ctlMain" data-action="play_pause" aria-label="Play or pause"><svg class="icPlay" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15L19.5 12z"/></svg><svg class="icPause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z"/></svg></button><button type="button" class="ctlBtn" data-action="next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5H18v14h-2.5zM4 5v14l10.5-7z"/></svg></button></div>
     <div id="lyTurn">
       <div id="lyTurnIcon">
         <svg id="lyTurnSvg" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
@@ -1795,6 +1824,10 @@ function renderLyricsPage(s) {
   $("lyArt").classList.toggle("has-img", !!s.art);
   const t = s.nav && s.next_turn;
   $("lyricsPage").classList.toggle("nav", !!t);
+  const showCtl = SCREEN.buttons === "always" || (SCREEN.buttons !== "never" && !s.gestures_running);
+  document.documentElement.classList.toggle("ctls", showCtl);
+  $("lyricsPage").classList.toggle("ctls", showCtl);
+  for (const id of ["homeCtl", "lyCtl"]) $(id).classList.toggle("playing", !!s.playing);
   if (t) {
     const name = turnIconName(t);
     if (name !== lyIcon) { $("lyTurnSvg").innerHTML = ICONS[name] || ICONS.straight; lyIcon = name; }
@@ -1842,6 +1875,12 @@ $("art").addEventListener("click", () => setView("lyrics"));
 $("lyArt").addEventListener("click", () => setView("home"));
 $("lyCover").addEventListener("error", () => $("lyArt").classList.remove("has-img"));
 $("mic").addEventListener("click", () => setView("assistant"));
+for (const b of document.querySelectorAll(".ctlBtn"))
+  b.addEventListener("click", () => {
+    if (b.dataset.action === "play_pause")       // flip now; the next poll confirms
+      for (const id of ["homeCtl", "lyCtl"]) $(id).classList.toggle("playing");
+    fetch("/api/action/" + b.dataset.action, {method: "POST"}).catch(() => toast("Dashboard not reachable"));
+  });
 $("zoomIn").addEventListener("click", () => zoomBy(1));
 $("zoomOut").addEventListener("click", () => zoomBy(-1));
 $("aiBack").addEventListener("click", () => setView("home"));
@@ -1897,7 +1936,8 @@ def main():
 
     cfg, created = load_config()
     screen.update(name=str(cfg["name"]), theme="light" if cfg["theme"] == "light" else "dark",
-                  cursor=bool(cfg["show_cursor"]), mapbox=str(cfg["mapbox_token"]))
+                  cursor=bool(cfg["show_cursor"]), mapbox=str(cfg["mapbox_token"]),
+                  buttons=str(cfg["playback_buttons"]))
     load_colors()
 
     if args.demo:
