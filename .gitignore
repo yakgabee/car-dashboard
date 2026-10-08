@@ -1,0 +1,7 @@
+config.json
+.spotify_token
+__pycache__/
+*.pyc
+certs/
+
+models/en_US-ryan-high.onnx
