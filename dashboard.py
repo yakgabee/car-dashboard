@@ -1249,6 +1249,13 @@ PAGE = r"""<!doctype html>
          border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
          font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
   #eta.show { display: block; }
+  /* zoom: + / - on the map, plus pinch and the mouse wheel */
+  #zoom { position: absolute; right: 12px; top: 12px; z-index: 500; display: none; flex-direction: column; gap: 8px; }
+  #map.live #zoom { display: flex; }
+  #zoom button { width: 52px; height: 52px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel);
+                 display: grid; place-items: center; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #zoom button:active { transform: scale(0.94); background: var(--line); }
+  #zoom svg { width: 26px; height: 26px; stroke: var(--text); }
   .leaflet-container { background: var(--map); font-family: inherit; }
   .leaflet-control-attribution { font-size: 10px; background: rgba(0, 0, 0, 0.35) !important; color: #c8ced6; }
   .leaflet-control-attribution a { color: #c8ced6; }
@@ -1364,6 +1371,14 @@ PAGE = r"""<!doctype html>
       <div id="map">
         <div id="mapView"></div>
         <div id="eta"></div>
+        <div id="zoom">
+          <button id="zoomIn" type="button" aria-label="Zoom in">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <button id="zoomOut" type="button" aria-label="Zoom out">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>
+          </button>
+        </div>
         <div id="mapEmpty">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>
@@ -1548,18 +1563,36 @@ function turnIcon(name) {
 }
 // ---- the map (Leaflet + Mapbox tiles), only when there is a Mapbox token
 let map = null, routeLine = null, car = null, shownRouteId = 0, routeLoading = false;
+// The map follows the car. Once you zoom, it keeps your zoom instead of its own (15, or 16 on a route).
+const ZOOM_MIN = 10, ZOOM_MAX = 18;
+let userZoom = null, autoTarget = null;     // autoTarget: the zoom the map last chose for itself
+let buttonZoomUntil = 0;                    // zoom animations started by the buttons end before this
+function zoomBy(step) {
+  if (!map) return;
+  const from = userZoom != null ? userZoom : Math.round(map.getZoom());   // fast taps: count from the target
+  userZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, from + step));
+  autoTarget = userZoom;
+  buttonZoomUntil = Date.now() + 700;
+  map.setZoom(userZoom);
+}
 const CAR_SVG = '<svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="#fff"/>' +
   '<circle cx="17" cy="17" r="12" style="fill: var(--car)"/><path d="M17 8l6 15-6-3.5-6 3.5z" fill="#fff"/></svg>';
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function setupMap() {
   if (map || !SCREEN.mapbox || !window.L) return;
   const style = document.documentElement.dataset.theme === "light" ? "light-v11" : "dark-v11";
-  map = L.map("mapView", {zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
-                          boxZoom: false, keyboard: false, touchZoom: false, fadeAnimation: false});
+  map = L.map("mapView", {zoomControl: false, dragging: false, scrollWheelZoom: "center", doubleClickZoom: "center",
+                          boxZoom: false, keyboard: false, touchZoom: "center", fadeAnimation: false,
+                          minZoom: ZOOM_MIN, maxZoom: ZOOM_MAX});
+  map.on("zoomend", () => {     // a zoom the map didn't ask for came from a pinch, the wheel or a double tap
+    if (Date.now() < buttonZoomUntil) return;
+    if (Math.round(map.getZoom()) !== autoTarget) userZoom = Math.round(map.getZoom());
+  });
   L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/" + style + "/tiles/512/{z}/{x}/{y}@2x?access_token=" + SCREEN.mapbox,
               {tileSize: 512, zoomOffset: -1, maxZoom: 19,
                attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
   map.attributionControl.setPrefix(false);
+  autoTarget = 12;
   map.setView([43.6532, -79.3832], 12);
 }
 async function loadRoute(id) {
@@ -1572,7 +1605,10 @@ async function loadRoute(id) {
       const latlngs = r.line.map(([lon, lat]) => [lat, lon]);
       routeLine = L.polyline(latlngs, {color: cssVar("--route"), weight: 7, opacity: 0.95,
                                        lineCap: "round", lineJoin: "round"}).addTo(map);
-      if (!car) map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+      if (!car) {
+        autoTarget = map.getBoundsZoom(routeLine.getBounds(), false, L.point(60, 60));
+        map.fitBounds(routeLine.getBounds(), {padding: [30, 30]});
+      }
     }
     shownRouteId = r.id;
   } catch (e) {}
@@ -1594,7 +1630,8 @@ function renderMap(s) {
     car.setLatLng(at);
     const svg = car.getElement() && car.getElement().querySelector("svg");
     if (svg) svg.style.transform = "rotate(" + heading + "deg)";
-    map.setView(at, s.nav ? 16 : 15, {animate: true});
+    autoTarget = userZoom != null ? userZoom : (s.nav ? 16 : 15);
+    map.setView(at, autoTarget, {animate: true});
   } else if (car) { car.remove(); car = null; }
   $("eta").classList.toggle("show", !!s.nav);
   if (s.nav) $("eta").textContent = s.nav.minutes + " min · " + s.nav.remaining;
@@ -1804,6 +1841,8 @@ $("art").addEventListener("click", () => setView("lyrics"));
 $("lyArt").addEventListener("click", () => setView("home"));
 $("lyCover").addEventListener("error", () => $("lyArt").classList.remove("has-img"));
 $("mic").addEventListener("click", () => setView("assistant"));
+$("zoomIn").addEventListener("click", () => zoomBy(1));
+$("zoomOut").addEventListener("click", () => zoomBy(-1));
 $("aiBack").addEventListener("click", () => setView("home"));
 $("talk").addEventListener("click", async () => {
   try {

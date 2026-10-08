@@ -136,7 +136,14 @@ background threads do the work so a slow network call never freezes the screen.
   `static/leaflet`, served by our own `/static` route; Flask's built-in static
   route is off) over Mapbox raster tiles (dark-v11/light-v11), route line from
   `/api/route` when `Hub.route_id` changes, car arrow rotated by heading,
-  "N min · X km" chip. Token: `mapbox_token` in config.json (public pk.,
+  "N min · X km" chip. Zoom (owner asked): 52px + / - buttons top right of
+  the live map, plus pinch, mouse wheel and double tap, all around the
+  centre (no dragging, so it keeps following the car), limits 10-18. Once
+  zoomed, `userZoom` replaces the automatic 15/16 for the rest of the run;
+  `zoomend` events that the map didn't ask for (`autoTarget`) count as the
+  user's, button animations are ignored for 700 ms so fast taps add up.
+  Tested in a browser with a test token: buttons, limits, wheel, and the
+  zoom staying put across position updates. Token: `mapbox_token` in config.json (public pk.,
   also given to the page). Tested with a simulated drive; not yet in a car.
 - Phone location (owner chose the website over the Expo app): the phone page
   has "Share my location" (watchPosition + screen wake lock) posting to
