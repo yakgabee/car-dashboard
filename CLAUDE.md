@@ -101,10 +101,17 @@ background threads do the work so a slow network call never freezes the screen.
   takes the active device, else one whose name contains config
   `"spotify_device"` (e.g. "iPhone"), else the first; none at all ->
   "Open Spotify on your phone or computer first." (`NoDevice`). After
-  `start_playback`, `play_song` polls `current_playback` up to 4 x 0.75 s and
-  only says "Playing X by Y on <device>." when that track is really playing,
-  otherwise "Spotify didn't start X on <device>...". Tested against a fake
-  Spotify (active, preferred, fallback, never starts, no device) and demo.
+  `start_playback`, `play_song` checks with `is_playing()` (8 x 0.75 s; the
+  same URI, the `linked_from` URI or the same name counts, since Spotify may
+  play a relinked copy) and only then says "Playing X by Y on <device>.".
+  Second round (owner's PC still ignored it): an idle device first gets
+  `transfer_playback(force_play=False)` + 1 s, and if the song still hasn't
+  started the play command is sent once more. On failure it prints what
+  Spotify reported to the log and says "Press play once in Spotify there,
+  then ask again." The resume action uses `transfer_playback(force_play=True)`
+  for an idle device. Tested against fakes (ok, needs transfer, relinked,
+  slow 4 s, needs two commands, never) and demo; NOT yet confirmed on the
+  owner's PC.
 - Voice navigation: "take me to / navigate to / directions to <place>" sets
   the destination (`navigate()`).
 - Map and turn-by-turn (stage 5, done): `navigation.py` `Navigator` thread

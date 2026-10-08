@@ -293,6 +293,9 @@ class DemoPlayer:
                      "album": {"name": album, "images": []}},
         }
 
+    def transfer_playback(self, device_id, force_play=False):
+        self.playing = self.playing or force_play
+
     def devices(self):
         return {"devices": [{"id": "demo", "name": "Demo phone", "is_active": True, "is_restricted": False}]}
 
@@ -418,7 +421,11 @@ def action_loop(sp, sp_lock, volume_step):
                     want = not playing if action == "play_pause" else action == "play"
                     if want != playing:     # Spotify refuses "play" while already playing
                         if want:
-                            sp.start_playback(device_id=pick_device(sp)["id"])
+                            device = pick_device(sp)
+                            if device.get("is_active"):
+                                sp.start_playback(device_id=device["id"])
+                            else:       # idle app: moving playback there wakes it and resumes
+                                sp.transfer_playback(device["id"], force_play=True)
                         else:
                             sp.pause_playback()
                 elif action == "next":
@@ -463,6 +470,26 @@ def pick_device(sp):
             or devices[0])
 
 
+def is_playing(sp, sp_lock, track, tries):
+    """Poll until the track is playing (up to tries x 0.75 s). Returns (playing, last playback state).
+    Spotify may play a relinked copy (other album/market release), so the name counts too."""
+    pb = None
+    for _ in range(tries):
+        time.sleep(0.75)
+        try:
+            with sp_lock:
+                pb = sp.current_playback()
+        except Exception:
+            continue
+        item = (pb or {}).get("item") or {}
+        same = (item.get("uri") == track["uri"]
+                or (item.get("linked_from") or {}).get("uri") == track["uri"]
+                or (item.get("name") or "").lower() == track["name"].lower())
+        if pb and pb.get("is_playing") and same:
+            return True, pb
+    return False, pb
+
+
 def play_song(query):
     """Search Spotify and play the best match. Returns a sentence to speak. Called from the voice thread."""
     sp, sp_lock = player["sp"], player["lock"]
@@ -482,6 +509,12 @@ def play_song(query):
                 return f"I couldn't find {query}."
             track = items[0]
             device = pick_device(sp)
+            if not device.get("is_active"):
+                # an idle app often ignores a play command until playback is moved to it
+                sp.transfer_playback(device["id"], force_play=False)
+        if not device.get("is_active"):
+            time.sleep(1.0)
+        with sp_lock:
             sp.start_playback(device_id=device["id"], uris=[track["uri"]])
     except NoDevice as err:
         hub.update(error=str(err))
@@ -491,22 +524,23 @@ def play_song(query):
         hub.update(error=message)
         return message
     name, by = track["name"], track["artists"][0]["name"] if track["artists"] else ""
+    where = device.get("name") or "your device"
     # Spotify answers OK before the device has done anything: check that the song really started
-    started = False
-    for _ in range(4):
-        time.sleep(0.75)
+    started, pb = is_playing(sp, sp_lock, track, tries=8)
+    if not started:                 # a device that was asleep often needs the command twice
         try:
             with sp_lock:
-                pb = sp.current_playback()
-        except Exception:
-            continue
-        if pb and pb.get("is_playing") and (pb.get("item") or {}).get("uri") == track["uri"]:
-            started = True
-            break
+                sp.start_playback(device_id=device["id"], uris=[track["uri"]])
+        except Exception as err:
+            print(f"[spotify] second try failed: {err}")
+        started, pb = is_playing(sp, sp_lock, track, tries=8)
     refresh_now.set()
-    where = device.get("name") or "your device"
     if not started:
-        message = f"Spotify didn't start {name} on {where}. Open Spotify there and try again."
+        item = (pb or {}).get("item") or {}
+        print(f"[spotify] {name} not playing on {where} ({device.get('type')}, was active: "
+              f"{device.get('is_active')}). Spotify reports: playing={(pb or {}).get('is_playing')}, "
+              f"device={((pb or {}).get('device') or {}).get('name')}, item={item.get('name')} {item.get('uri')}")
+        message = f"Spotify didn't start {name} on {where}. Press play once in Spotify there, then ask again."
         hub.update(error=message)
         return message
     hub.show(f"Playing {name}")
