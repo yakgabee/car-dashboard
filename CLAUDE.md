@@ -82,6 +82,9 @@ background threads do the work so a slow network call never freezes the screen.
   position in it, destination, weather). Errors go to `Hub.voice_error` and
   voice falls back to the simple rules. Claude never routes; Mapbox will.
   Tested live: fixes misheard names ("lick lie" -> Lykke Li), ignores chatter.
+  `car_state()` also has `ip_address` (this computer's LAN IPv4 addresses from
+  `local_addresses()`, without 127.0.0.1) so "what's the IP address" is answered
+  with it (the prompt says it is not a web search). Not tested against live Claude.
 - Claude web search + memory (owner asked): decision action `search` ->
   `Assistant.search()` makes a second request with the `web_search_20250305`
   server tool (max 2 searches, user_location from config city/timezone;

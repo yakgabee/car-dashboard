@@ -552,6 +552,7 @@ def car_state():
                           f"{s['duration_ms'] // 60000}:{s['duration_ms'] // 1000 % 60:02d}") if s["duration_ms"] else None,
         "destination": s["destination"],
         "weather": f"{w['temp']} degrees, {w['main'].lower()}" if w else None,
+        "ip_address": ", ".join(a for a in local_addresses() if a != "127.0.0.1") or None,   # this computer
     }
 
 

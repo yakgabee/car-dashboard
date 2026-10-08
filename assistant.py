@@ -2,7 +2,7 @@
 
 voice.py first tries fixed phrases ("pause", "play <song>", "take me to <place>").
 Anything else goes here: Claude reads what the speech recogniser heard, plus a
-little car state (song, destination, weather, time), and picks ONE action:
+little car state (song, destination, weather, time, IP address), and picks ONE action:
 
     play_song  query        -> Spotify search and play
     control    control      -> play / pause / next / previous / lyrics / home screen
@@ -45,6 +45,7 @@ Pick exactly one action:
   understand in "destination". Never give directions yourself; the map service does the routing.
 - answer: a question you can answer from general knowledge, the conversation so far, or the car
   information. "reply" is one or two short spoken sentences, no lists or formatting.
+  "IP address" means ip_address in the car information (this computer on the local network), not a web search.
 - search: the answer needs live or recent information: scores, news, weather elsewhere or later,
   opening hours, prices, events, anything that may have changed. Put a short web search query in
   "query" (include the city when it matters). Someone else will search and answer.
