@@ -4,7 +4,7 @@ Car dashboard: greeting, clock, weather, now playing, album art, map and
 next-direction placeholders, hand gestures and voice commands.
 
 SETUP (on the Pi)
-    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+    ./install.sh                     # system packages + .venv + every Python module
     .venv/bin/python dashboard.py --demo   # test the screen with fake songs first
     python3 dashboard.py             # first run writes config.json, fill it in
     python3 dashboard.py --kiosk     # also opens Chromium full screen

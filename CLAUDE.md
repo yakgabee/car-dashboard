@@ -184,6 +184,14 @@ background threads do the work so a slow network call never freezes the screen.
   login. Tested in the sandbox with a stand-in Chromium (launch, single
   copy, restart); NOT tested on a Pi.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
+  `install.sh` (owner asked) does the whole setup: apt (python3-venv,
+  python3-dev, libportaudio2, libgl1, curl, Chromium if missing), `.venv`,
+  pip in groups so one failure (usually mediapipe) doesn't stop the rest,
+  then an import check with a summary. Its package list mirrors
+  requirements.txt; keep them in step. No `opencv-python`: mediapipe pulls
+  `opencv-contrib-python`, and two cv2 packages clash. Tested in the sandbox
+  (x86_64, apt faked): all groups installed and imported except sounddevice,
+  which needs the apt PortAudio library. NOT tested on a Pi.
 - `--demo` runs with fake songs and no Spotify. `--kiosk` opens Chromium.
 - First run writes `config.json` (Spotify client ID and secret go there).
 

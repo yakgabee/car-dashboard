@@ -1,4 +1,5 @@
-# Car Pi dashboard. Install with: pip install -r requirements.txt
+# Car Pi dashboard. Easiest: ./install.sh (does all of the below; keep its list in step with this one).
+# By hand: pip install -r requirements.txt
 # On Raspberry Pi OS, plain pip is blocked; use a virtual environment here
 # (start.sh uses it automatically):
 #   python3 -m venv .venv
@@ -17,8 +18,7 @@ cryptography
 anthropic
 
 # Hand gestures (gestures.py)
-mediapipe
-opencv-python
+mediapipe       # brings OpenCV (opencv-contrib-python); don't add opencv-python too, two cv2 copies clash
 numpy
 
 # Voice (voice.py)
