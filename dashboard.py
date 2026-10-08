@@ -1767,7 +1767,9 @@ def main():
     except ImportError:
         print("[dashboard] lyrics off: pip install requests")
     if not args.no_gestures:
-        start_plugin("gestures", trigger, int(cfg["camera"]))
+        camera = int(cfg["camera"])
+        print(f'[dashboard] gesture camera {camera} ("camera" in {CONFIG_PATH})')
+        start_plugin("gestures", trigger, camera)
     if cfg["anthropic_api_key"]:
         try:
             spec = importlib.util.spec_from_file_location("assistant", HERE / "assistant.py")

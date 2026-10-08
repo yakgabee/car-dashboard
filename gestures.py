@@ -14,9 +14,11 @@ dashboard.py starts this by calling run(trigger). It has no window there.
 To test the camera on its own, with a preview window and no Spotify:
     python3 gestures.py              # press q in the window to quit
     python3 gestures.py --camera 1
+Without --camera it uses "camera" from config.json, like the dashboard.
 """
 
 import argparse
+import json
 import math
 import os
 import time
@@ -182,6 +184,15 @@ def watch(on_gesture, camera=CAMERA_INDEX, show=False):
             cv2.destroyAllWindows()
 
 
+def configured_camera():
+    """The "camera" number from config.json next to this file, or 0."""
+    try:
+        with open(os.path.join(HERE, "config.json")) as f:
+            return int(json.load(f).get("camera", CAMERA_INDEX))
+    except (OSError, ValueError, TypeError):
+        return CAMERA_INDEX
+
+
 def run(trigger, camera=CAMERA_INDEX):
     """Called by dashboard.py in a background thread. Gesture names match the dashboard's actions."""
     print(f"[gestures] watching camera {camera}")
@@ -190,8 +201,11 @@ def run(trigger, camera=CAMERA_INDEX):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--camera", type=int, default=CAMERA_INDEX, help="camera index (default 0)")
+    parser.add_argument("--camera", type=int, default=None, help='camera index (default: "camera" in config.json, else 0)')
     args = parser.parse_args()
+    if args.camera is None:
+        args.camera = configured_camera()
+    print(f"Using camera {args.camera}.")
     print("Gesture test: no Spotify. Press q in the window (or Ctrl+C) to quit.")
     try:
         watch(lambda name: print(f"-> {name}"), camera=args.camera, show=True)
