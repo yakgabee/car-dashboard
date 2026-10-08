@@ -122,6 +122,27 @@ background threads do the work so a slow network call never freezes the screen.
   of the 300px cover art with +, a level bar (`Hub.volume`) and -, posting
   `volume_up`/`volume_down`. Dimmed when the device reports no remote volume
   (iPhones usually). Each change flashes "Volume N%".
+- Lyrics page (stage 4, done): `lyrics.py` `Lyrics` thread watches the song
+  in `Hub` and asks LRCLIB (`/api/get` with title, first artist, album and
+  length, then `/api/search` with the title as is and without " - Remastered",
+  "(feat. ...)" etc., preferring synced lyrics within 4 s of the song length).
+  Remembers the last 50 songs. `Hub.lyrics_id`/`lyrics_state` (loading,
+  synced, plain, instrumental, none, error; network errors retry after 30 s);
+  the lines are at `GET /api/lyrics`, fetched by the page only when the id
+  changes. The page follows `design/lyrics-*.html`: current line large in the
+  accent color, two lines before and three after, positions estimated between
+  polls (200 ms tick, lines shown 300 ms early). Plain lyrics scroll with the
+  song's progress and say "Lyrics without timing". `Hub.view` ("home" or
+  "lyrics") is kept on the server so a reload, voice or a gesture all agree:
+  tap the song picture to switch, `POST /api/action/lyrics|home|toggle_view`,
+  voice "show lyrics" / "show the map" (not "go home", which sounds like
+  navigation), Claude's `control` can pick `lyrics`/`home`. While a route is
+  active a slim next-turn strip (icon, street, distance) sits under the
+  progress bar and the picture shrinks to 270px. `--demo` has fake synced
+  lyrics for "Night Drive", plain for "Third Track", none for the other.
+  Tested in demo mode at 800x480, 1024x600, 1280x720 and the lookup against
+  canned LRCLIB replies; lrclib.net itself was blocked in the build sandbox,
+  so NOT yet tested against the real service.
 - Plug-ins load through `start_plugin(name, *args)`; `--no-gestures` and
   `--no-voice` turn them off.
 - HTTP: `POST /api/action/<name>`, `POST|DELETE /api/destination`.
@@ -149,7 +170,7 @@ still confirms each gesture. Spotify errors show in red under the progress bar.
 - Barlow is bundled in `fonts/` (OFL license included) and served at `/fonts/`.
 - `Hub` has `next_turn` (`{"instruction", "street", "distance"}`), unused until
   stage 5. The strip already renders it and picks a left/right/straight icon.
-- Tapping the song picture does nothing yet (stage 4).
+- Tapping the song picture opens the lyrics page (stage 4).
 
 ### design/
 
@@ -203,7 +224,7 @@ because the car may be offline):
 1. Rearrange the home page to match the design.
 2. Plug the owner's gesture code in through `gestures.py`.
 3. Weather (OpenWeather) and the greeting. Done.
-4. Lyrics page and the tap to switch.
+4. Lyrics page and the tap to switch. Done.
 5. Map: done (phone page for destination and position, Mapbox route, Leaflet map).
 6. Voice: music by voice is done (`voice.py`). Questions to Ollama next.
 7. Car install: power, start on boot, clean shutdown, mounting.
@@ -238,7 +259,8 @@ because the car may be offline):
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
 - Gestures for volume up/down (play, pause, next, previous are decided).
 - Assistant start: wake phrase chosen ("hey bitch").
-- Whether to add the direction strip to the lyrics page.
+- Direction strip on the lyrics page: added, only while a route is active
+  (chosen while building; easy to drop).
 - Whether light/dark switches automatically.
 
 ## Conventions

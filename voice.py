@@ -5,6 +5,7 @@ Tap the mic button on the screen, wait for the beep, then say:
     "play Road Trips by Drake"  or just  "Road Trips by Drake"
     "pause", "resume", "next", "skip", "previous", "go back"
     "take me to Square One" / "navigate to ..." / "directions to ..."
+    "show lyrics" / "show the map"   switch the screen ("go home" stays free for navigation)
     Anything else ("find me coffee", "what's the weather?", "something chill")
     goes to Claude (assistant.py) when an API key is set.
 
@@ -64,6 +65,8 @@ COMMANDS = {
     "resume": "play", "play": "play", "continue": "play",
     "next": "next", "skip": "next", "next song": "next", "skip this": "next",
     "previous": "previous", "go back": "previous", "last song": "previous", "back": "previous",
+    "lyrics": "lyrics", "show lyrics": "lyrics", "show the lyrics": "lyrics", "show me the lyrics": "lyrics",
+    "show the map": "home", "show map": "home", "home screen": "home", "show home": "home",
 }
 
 

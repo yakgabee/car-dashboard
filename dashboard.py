@@ -4,7 +4,7 @@ Car dashboard: greeting, clock, weather, now playing, album art, map and
 next-direction placeholders, hand gestures and voice commands.
 
 SETUP (on the Pi)
-    pip install flask spotipy
+    pip install -r requirements.txt
     python3 dashboard.py --demo      # test the screen with fake songs first
     python3 dashboard.py             # first run writes config.json, fill it in
     python3 dashboard.py --kiosk     # also opens Chromium full screen
@@ -45,6 +45,12 @@ GESTURES
     If you would rather keep your gesture script separate, it can send
         POST http://localhost:5000/api/action/next
     instead.
+
+LYRICS
+    Tap the song picture for the lyrics page, tap it again to go back. Lyrics
+    come from LRCLIB (free, no key); time-synced ones follow the song, plain
+    ones scroll along with it. Voice: "show lyrics", "show the map". Apps and
+    gestures: POST /api/action/lyrics, /api/action/home, /api/action/toggle_view.
 
 WEATHER
     Put an OpenWeather API key in config.json ("openweather_api_key") and set
@@ -134,7 +140,8 @@ DEFAULT_CONFIG = {
 
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
 ACTIONS = ("play", "pause", "play_pause", "next", "previous", "volume_up", "volume_down")
-COOLDOWN = {"volume_up": 0.3, "volume_down": 0.3}   # seconds; others use 1.0
+VIEWS = ("home", "lyrics", "toggle_view")   # screen switches; trigger() handles them without Spotify
+COOLDOWN = {"volume_up": 0.3, "volume_down": 0.3, "home": 0.3, "lyrics": 0.3}   # seconds; others use 1.0
 LABELS = {
     "play": "Play",
     "pause": "Pause",
@@ -181,6 +188,9 @@ class Hub:
             "nav_status": None,     # "Finding ...", "Waiting for your location ..."
             "nav_error": None,
             "route_id": 0,          # changes when the route changes; the line itself is at /api/route
+            "view": "home",         # "home" or "lyrics"
+            "lyrics_id": 0,         # changes when the lyrics change; the lines themselves are at /api/lyrics
+            "lyrics_state": "none", # loading, synced, plain, instrumental, none, error
         }
         self.fetched_at = time.time()
         self.action_count = 0
@@ -225,7 +235,7 @@ _trigger_lock = threading.Lock()
 
 def trigger(action):
     """Call this from gesture code. Returns right away; never blocks the camera loop."""
-    if action not in ACTIONS:
+    if action not in ACTIONS and action not in VIEWS:
         print(f"[dashboard] unknown action: {action!r}")
         return False
     now = time.time()
@@ -233,6 +243,12 @@ def trigger(action):
         if now - _last_trigger.get(action, 0) < COOLDOWN.get(action, 1.0):
             return False
         _last_trigger[action] = now
+    if action in VIEWS:
+        with hub.lock:
+            if action == "toggle_view":
+                action = "home" if hub.data["view"] == "lyrics" else "lyrics"
+            hub.data["view"] = action
+        return True
     actions.put(action)
     return True
 
@@ -447,6 +463,7 @@ def play_song(query):
     return f"Playing {name} by {by}." if by else f"Playing {name}."
 
 
+lyrics = {"source": None}       # lyrics.Lyrics, set in main()
 navigator = {"nav": None}       # navigation.Navigator, set in main() when there is a Mapbox token
 
 
@@ -598,6 +615,12 @@ def api_route():
     return jsonify(nav.geometry() if nav else {"id": 0, "line": []})
 
 
+@app.get("/api/lyrics")
+def api_lyrics():
+    source = lyrics["source"]
+    return jsonify(source.data() if source else {"id": 0, "song": None, "state": "none", "lines": []})
+
+
 @app.get("/fonts/<path:name>")
 def fonts(name):
     return send_from_directory(FONTS_PATH, name, max_age=86400)
@@ -610,7 +633,7 @@ def api_state():
 
 @app.post("/api/action/<name>")
 def api_action(name):
-    if name not in ACTIONS:
+    if name not in ACTIONS and name not in VIEWS:
         return jsonify(ok=False, error="unknown action"), 404
     return jsonify(ok=True, accepted=trigger(name))
 
@@ -1057,11 +1080,13 @@ PAGE = r"""<!doctype html>
     --bg: #0c0f12; --panel: #151a20; --line: #252c35; --text: #f3f5f7; --muted: #9aa4b2;
     --accent: #ffb14a; --route: #5aa9ff; --on-route: #0c0f12; --map: #151a20; --map-line: #252c35;
     --art: #1a2028; --art-line: #2a323c; --art-icon: #5b6675; --track: #2a323c; --warn: #ff7a6e;
+    --ly-far: #7f8998; --ly-next: #d3d9e1;
   }
   [data-theme="light"] {
     --bg: #eef1f4; --panel: #ffffff; --line: #d5dae1; --text: #12161b; --muted: #556070;
     --accent: #a35400; --route: #1d6fd1; --on-route: #ffffff; --map: #dde2e8; --map-line: #c9d0d9;
     --art: #dfe4ea; --art-line: #c9d0d9; --art-icon: #7b8696; --track: #cfd5dd; --warn: #b3261e;
+    --ly-far: #636b78; --ly-next: #2a313a;
   }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
@@ -1069,9 +1094,61 @@ PAGE = r"""<!doctype html>
          font-family: Barlow, system-ui, "Segoe UI", Roboto, "DejaVu Sans", sans-serif; }
 
   /* drawn at 1024x600 like the mockups, then scaled to fit the real screen */
-  #screen { position: absolute; left: 50%; top: 50%; width: 1024px; height: 600px;
-            transform: translate(-50%, -50%) scale(var(--scale, 1));
-            padding: 22px 32px 18px; display: flex; flex-direction: column; gap: 16px; }
+  #screen, #lyricsPage { position: absolute; left: 50%; top: 50%; width: 1024px; height: 600px;
+                         transform: translate(-50%, -50%) scale(var(--scale, 1)); }
+  #screen { padding: 22px 32px 18px; display: flex; flex-direction: column; gap: 16px; }
+  #art { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  html.lyrics #screen { visibility: hidden; }
+  #lyricsPage { display: none; grid-template-columns: 404px 620px; }
+  html.lyrics #lyricsPage { display: grid; }
+
+  /* lyrics page: song on the left, lines on the right (design/lyrics-*.html) */
+  .lyLeft { padding: 32px; display: flex; flex-direction: column; gap: 16px; border-right: 1px solid var(--line); min-width: 0; }
+  #lyArt { width: 340px; height: 340px; flex-shrink: 0; border-radius: 18px; background: var(--art);
+           border: 1px solid var(--art-line); display: grid; place-items: center; overflow: hidden;
+           cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #lyArt svg { width: 64px; height: 64px; stroke: var(--art-icon); }
+  #lyArt img { width: 100%; height: 100%; object-fit: cover; display: none; }
+  #lyArt.has-img svg { display: none; }
+  #lyArt.has-img img { display: block; }
+  #lyricsPage.nav #lyArt { width: 270px; height: 270px; }
+  .lySong { display: flex; flex-direction: column; gap: 2px; }
+  #lyTitle { font-size: 32px; font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lyArtist { font-size: 22px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lyProgress { display: flex; flex-direction: column; gap: 8px; }
+  #lyBar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; }
+  #lyFill { height: 100%; width: 0; background: var(--accent); border-radius: 3px; }
+  .lyTimes { display: flex; justify-content: space-between; font-size: 17px; color: var(--muted);
+             font-variant-numeric: tabular-nums; }
+  /* slim next-turn strip, only while following a route */
+  #lyTurn { display: none; height: 64px; flex-shrink: 0; border-radius: 14px; background: var(--panel);
+            border: 1px solid var(--line); padding: 0 14px; align-items: center; gap: 12px; margin-top: auto; }
+  #lyricsPage.nav #lyTurn { display: flex; }
+  #lyTurnIcon { width: 40px; height: 40px; border-radius: 10px; background: var(--route); flex-shrink: 0;
+                display: grid; place-items: center; }
+  #lyTurnIcon svg { width: 24px; height: 24px; stroke: var(--on-route); }
+  #lyTurnMain { font-size: 22px; font-weight: 700; flex-grow: 1; min-width: 0;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lyTurnDist { font-size: 22px; font-weight: 600; flex-shrink: 0; }
+
+  .lyRight { padding: 32px 40px; display: flex; flex-direction: column; justify-content: center; min-width: 0;
+             position: relative; overflow: hidden; }
+  #lySynced { display: flex; flex-direction: column; gap: 22px; }
+  #lySynced div { font-size: 26px; font-weight: 500; color: var(--ly-far);
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.2em; }
+  #lySynced .l1, #lySynced .l4 { font-size: 28px; color: var(--muted); }
+  #lySynced .l2 { font-size: 46px; font-weight: 700; line-height: 1.12; letter-spacing: -0.01em; color: var(--accent);
+                  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #lySynced .l3 { font-size: 30px; font-weight: 600; color: var(--ly-next); }
+  #lyPlain { position: absolute; inset: 32px 40px; overflow: hidden; }
+  #lyPlainText { font-size: 28px; font-weight: 500; line-height: 1.45; color: var(--ly-next); white-space: pre-line;
+                 padding: 40% 0; transition: transform 1s linear; }
+  #lyNote { position: absolute; right: 24px; top: 8px; font-size: 16px; color: var(--muted); }
+  #lyMessage { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+  #lyMessage svg { width: 56px; height: 56px; stroke: var(--muted); }
+  #lyMessageMain { font-size: 34px; font-weight: 700; }
+  #lyMessageNote { font-size: 21px; color: var(--muted); }
+  .lyRight > .hide { display: none !important; }
 
   header { display: flex; justify-content: space-between; align-items: center; height: 56px; flex-shrink: 0; }
   #hello { font-size: 36px; font-weight: 600; letter-spacing: -0.01em;
@@ -1245,6 +1322,47 @@ PAGE = r"""<!doctype html>
   </footer>
 </div>
 
+<div id="lyricsPage">
+  <div class="lyLeft">
+    <div id="lyArt" role="button" aria-label="Back to home">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>
+      </svg>
+      <img id="lyCover" alt="">
+    </div>
+    <div class="lySong">
+      <div id="lyTitle">Nothing playing</div>
+      <div id="lyArtist"></div>
+    </div>
+    <div class="lyProgress">
+      <div id="lyBar"><div id="lyFill"></div></div>
+      <div class="lyTimes"><span id="lyElapsed">0:00</span><span id="lyLength">0:00</span></div>
+    </div>
+    <div id="lyTurn">
+      <div id="lyTurnIcon">
+        <svg id="lyTurnSvg" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+      </div>
+      <div id="lyTurnMain"></div>
+      <div id="lyTurnDist"></div>
+    </div>
+  </div>
+  <div class="lyRight">
+    <div id="lySynced" class="hide">
+      <div class="l0"></div><div class="l1"></div><div class="l2"></div>
+      <div class="l3"></div><div class="l4"></div><div class="l5"></div>
+    </div>
+    <div id="lyPlain" class="hide"><div id="lyPlainText"></div></div>
+    <div id="lyNote" class="hide">Lyrics without timing</div>
+    <div id="lyMessage">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>
+      </svg>
+      <div id="lyMessageMain">No lyrics</div>
+      <div id="lyMessageNote"></div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1261,7 +1379,7 @@ ICONS.arrive = ICONS.pin;
 // Phone page color names -> the CSS variables they set
 const COLOR_VARS = {
   background: ["--bg"], panel: ["--panel", "--map", "--art"], border: ["--line", "--map-line", "--art-line"],
-  bar: ["--accent"], text: ["--text"], route: ["--route"],
+  bar: ["--accent"], text: ["--text", "--ly-next"], route: ["--route"],
 };
 let lastAction = null, toastTimer = null, misses = 0, shownIcon = null, shownColors = "";
 
@@ -1310,6 +1428,10 @@ function renderWeather(w) {
     shownWeather = icon;
   }
   $("temp").textContent = w ? w.temp + "°" : "--°";
+}
+function turnIconName(t) {
+  const text = (t.instruction || "").toLowerCase();
+  return t.icon || (text.includes("right") ? "right" : text.includes("left") ? "left" : "straight");
 }
 function turnIcon(name) {
   if (name !== shownIcon) { $("turnSvg").innerHTML = ICONS[name] || ICONS.straight; shownIcon = name; }
@@ -1373,8 +1495,7 @@ function renderRoute(s) {
   renderMap(s);
   const t = s.next_turn;
   if (t) {
-    const text = (t.instruction || "").toLowerCase();
-    turnIcon(t.icon || (text.includes("right") ? "right" : text.includes("left") ? "left" : "straight"));
+    turnIcon(turnIconName(t));
     $("turnMain").textContent = t.instruction || "Continue";
     $("turnStreet").textContent = t.street || "";
     $("turnDist").textContent = t.distance || "";
@@ -1408,8 +1529,109 @@ function renderVoice(state) {
   for (const name of ["off", "listening", "working"]) mic.classList.toggle(name, state === name);
   $("voiceHint").textContent = VOICE_HINTS[state] || "";
 }
+// ---- the lyrics page
+const LEAD_MS = 300;    // show a line a moment early: Spotify's position arrives a little late
+let view = "home", viewHoldUntil = 0, lyricsId = -1, lyrics = null, lyIndex = null, lyIcon = null;
+let play = {pos: 0, at: 0, playing: false, dur: 0}, hasSong = false, shownLayout = "";
+const LY_MESSAGES = {
+  loading: ["Finding lyrics…", ""],
+  none: ["No lyrics for this song", "LRCLIB doesn't have them yet"],
+  instrumental: ["Instrumental", "No words in this one"],
+  error: ["No connection to the lyrics service", "Trying again shortly"],
+};
+function showView(v) {
+  view = v === "lyrics" ? "lyrics" : "home";
+  document.documentElement.classList.toggle("lyrics", view === "lyrics");
+  lyIndex = null;
+  lyTick();
+}
+function setView(v) {
+  showView(v);
+  viewHoldUntil = Date.now() + 2000;      // don't let a poll already on its way switch it back
+  fetch("/api/action/" + v, {method: "POST"}).catch(() => toast("Dashboard not reachable"));
+}
+function mmss(ms) {
+  const sec = Math.floor((ms || 0) / 1000);
+  return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+}
+function positionNow() {
+  return play.playing ? Math.min(play.dur, play.pos + performance.now() - play.at) : play.pos;
+}
+function lyShow(part) {
+  for (const id of ["lySynced", "lyPlain", "lyMessage"]) $(id).classList.toggle("hide", id !== part);
+  $("lyNote").classList.toggle("hide", part !== "lyPlain");
+}
+function lyMessage(main, note) {
+  lyShow("lyMessage");
+  $("lyMessageMain").textContent = main;
+  $("lyMessageNote").textContent = note;
+}
+function lyLayout() {
+  shownLayout = hasSong + "|" + (lyrics ? lyrics.id : "");
+  const state = lyrics ? lyrics.state : "loading";
+  if (!hasSong) lyMessage("Nothing playing", "Start a song on your phone");
+  else if (state === "synced") lyShow("lySynced");
+  else if (state === "plain") { lyShow("lyPlain"); $("lyPlainText").textContent = lyrics.lines.join("\n"); }
+  else lyMessage(...(LY_MESSAGES[state] || LY_MESSAGES.none));
+  lyIndex = null;
+  lyTick();
+}
+async function loadLyrics() {
+  try {
+    lyrics = await (await fetch("/api/lyrics", {cache: "no-store"})).json();
+    lyLayout();
+  } catch (e) { lyricsId = -1; }     // try again on the next poll
+}
+function lyTick() {
+  if (view !== "lyrics") return;
+  const pos = positionNow();
+  $("lyFill").style.width = play.dur ? (100 * pos / play.dur) + "%" : "0";
+  $("lyElapsed").textContent = mmss(pos);
+  $("lyLength").textContent = mmss(play.dur);
+  if (!hasSong || !lyrics) return;
+  if (lyrics.state === "synced") {
+    const lines = lyrics.lines, at = pos + LEAD_MS;
+    let i = -1;
+    while (i + 1 < lines.length && lines[i + 1][0] <= at) i++;
+    if (i === lyIndex) return;
+    lyIndex = i;
+    const slots = $("lySynced").children;
+    for (let k = 0; k < 6; k++) {
+      const line = lines[i - 2 + k];
+      slots[k].textContent = line ? (line[1] || "♪") : (k === 2 ? "♪" : "");
+    }
+  } else if (lyrics.state === "plain") {
+    const text = $("lyPlainText"), room = $("lyPlain").clientHeight;
+    const travel = Math.max(0, text.offsetHeight - room);
+    text.style.transform = "translateY(" + (-travel * (play.dur ? pos / play.dur : 0)) + "px)";
+  }
+}
+function renderLyricsPage(s) {
+  hasSong = !!s.title;
+  play = {pos: s.progress_ms || 0, at: performance.now(), playing: !!s.playing, dur: s.duration_ms || 0};
+  $("lyTitle").textContent = s.title || "Nothing playing";
+  $("lyArtist").textContent = s.title ? (s.artist || "") : "Start a song on your phone";
+  const cover = $("lyCover");
+  if (s.art) { if (cover.getAttribute("src") !== s.art) cover.src = s.art; }
+  else cover.removeAttribute("src");
+  $("lyArt").classList.toggle("has-img", !!s.art);
+  const t = s.nav && s.next_turn;
+  $("lyricsPage").classList.toggle("nav", !!t);
+  if (t) {
+    const name = turnIconName(t);
+    if (name !== lyIcon) { $("lyTurnSvg").innerHTML = ICONS[name] || ICONS.straight; lyIcon = name; }
+    $("lyTurnMain").textContent = t.street || t.instruction || "Continue";   // short: the strip is narrow
+    $("lyTurnDist").textContent = t.distance || "";
+  }
+  if (s.lyrics_id !== lyricsId) { lyricsId = s.lyrics_id; loadLyrics(); }
+  if (hasSong + "|" + (lyrics ? lyrics.id : "") !== shownLayout) lyLayout();
+  if (Date.now() > viewHoldUntil && s.view !== view) showView(s.view);
+  else lyTick();
+}
+
 function render(s) {
   applyColors(s.colors);
+  renderLyricsPage(s);
   renderVoice(s.voice_state);
   $("volume").classList.toggle("off", !s.supports_volume);
   $("volFill").style.height = (s.volume == null ? 0 : s.volume) + "%";
@@ -1437,7 +1659,9 @@ async function tick() {
     if (++misses > 2) $("error").textContent = "Dashboard stopped. Check the Pi.";
   }
 }
-// Stage 4: tapping #art will open the lyrics page.
+$("art").addEventListener("click", () => setView("lyrics"));
+$("lyArt").addEventListener("click", () => setView("home"));
+$("lyCover").addEventListener("error", () => $("lyArt").classList.remove("has-img"));
 for (const [id, action] of [["volUp", "volume_up"], ["volDown", "volume_down"]])
   $(id).addEventListener("click", () => {
     fetch("/api/action/" + action, {method: "POST"}).then(tick).catch(() => toast("Dashboard not reachable"));
@@ -1455,6 +1679,7 @@ fit(); clock(); tick();
 addEventListener("resize", fit);
 setInterval(clock, 1000);
 setInterval(tick, 1000);
+setInterval(lyTick, 200);
 </script>
 </body>
 </html>
@@ -1521,6 +1746,14 @@ def main():
         threading.Thread(target=weather_loop, args=(cfg,), name="weather", daemon=True).start()
     else:
         hub.update(weather_error="Add an OpenWeather key to config.json for weather.")
+    try:
+        spec = importlib.util.spec_from_file_location("lyrics", HERE / "lyrics.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        lyrics["source"] = module.Lyrics(hub, demo=args.demo)
+        threading.Thread(target=lyrics["source"].loop, name="lyrics", daemon=True).start()
+    except ImportError:
+        print("[dashboard] lyrics off: pip install requests")
     if not args.no_gestures:
         start_plugin("gestures", trigger)
     if cfg["anthropic_api_key"]:
