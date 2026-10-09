@@ -60,7 +60,18 @@ background threads do the work so a slow network call never freezes the screen.
   held it says the dashboard is using the camera. Owner reported OpenCV not
   opening right on the Pi (no error text given); these are the guessed causes. Needs mediapipe (install.sh), 64-bit Raspberry
   Pi OS, and the libegl1 + libgles2 system libraries (mediapipe 1.x loads
-  libEGL.so.1 and libGLESv2.so.2; found in a fresh-install smoke test). Not yet tested on the Pi.
+  libEGL.so.1 and libGLESv2.so.2; found in a fresh-install smoke test).
+  First run on the owner's Pi 4 (Pi OS 13 Trixie, Python 3.13): mediapipe 1.1.0
+  killed the whole dashboard with "compiled with aes enabled ... Illegal
+  instruction" (the Pi 4's Cortex-A72 has no AES; the check string is in
+  1.x's libmediapipe.so, not in 0.10.x). Now: `install.sh` sees no `aes` in
+  /proc/cpuinfo on aarch64, pins `mediapipe==0.10.18` (wheels only up to
+  Python 3.12, needs numpy 1.x) and builds `.venv` from uv's Python 3.12
+  (uv installed to ~/.local if missing; a .venv of another version is
+  rebuilt). And `start_plugin` first runs `gestures.py --check` (hand model
+  on a blank picture) in a separate process; if that dies from a signal,
+  gestures stay off with an on-screen reason and the buttons show.
+  gestures.py tested with 0.10.18 on x86 Python 3.12; NOT yet on the Pi.
   No volume gestures: point up/down for volume was built and removed (owner
   decided against it; iPhones refuse remote volume anyway).
 - Weather (stage 3, done): `weather_loop` polls OpenWeather current weather
@@ -74,7 +85,10 @@ background threads do the work so a slow network call never freezes the screen.
   `play_song(query)` (Spotify search: title+artist fields, then plain query,
   then title alone; first hit). Also pause/stop, resume, next/skip,
   previous/go back. Replies spoken with Piper (`models/en_US-lessac-medium`).
-  Mic audio is ignored while it speaks. `python3 voice.py` tests it without
+  Mic audio is ignored while it speaks. Microphone: `pick_microphone()` takes
+  the one whose name contains config `"microphone"`, else the default, else
+  the first input (the owner's Pi had no default input: "Error querying
+  device -1"); the log lists all inputs. `voice.py --mic NAME` for testing. `python3 voice.py` tests it without
   Spotify; `--say` and `--file` too. No Ollama questions yet.
   The small Vosk model mishears unusual names; Spotify's fuzzy search covers
   a lot of it. Loud music in the car will hurt recognition.

@@ -141,6 +141,7 @@ DEFAULT_CONFIG = {
     "mapbox_token": "",
     "spotify_device": "",       # part of a device name to prefer when nothing is playing, e.g. "iPhone"
     "playback_buttons": "auto",  # previous/play-pause/next on screen: "auto" (only when the gesture camera isn't working), "always", "never"
+    "microphone": "",           # part of the microphone's name; "" = the default (the voice log lists them)
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
@@ -641,6 +642,23 @@ def weather_loop(cfg):
 
 # ---------------------------------------------------------------- plug-ins (gestures.py, voice.py)
 
+def gestures_crash_check(path):
+    """Try MediaPipe in a separate process first: a build made for newer CPUs dies with
+    "Illegal instruction" on a Pi 4 and would take the whole dashboard with it.
+    Returns the problem to show, or None (also when it merely failed to import: that is
+    reported the normal way)."""
+    try:
+        done = subprocess.run([sys.executable, str(path), "--check"], capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return None
+    if done.returncode >= 0:
+        return None
+    print(f"[dashboard] gestures check crashed (signal {-done.returncode}):\n{(done.stdout + done.stderr).strip()}")
+    if "compiled with" in done.stdout + done.stderr:
+        return "Gestures off: this MediaPipe needs a newer CPU. Run ./install.sh again."
+    return f"Gestures off: MediaPipe crashed (signal {-done.returncode})."
+
+
 def start_plugin(name, *args):
     """Run <name>.py's run(*args) in a thread. Problems show on screen as <name>_error."""
     path = HERE / f"{name}.py"
@@ -650,6 +668,9 @@ def start_plugin(name, *args):
     title = name.capitalize()
 
     def runner():
+        if name == "gestures" and (problem := gestures_crash_check(path)):
+            hub.update(gestures_running=False, gestures_error=problem)
+            return
         try:
             spec = importlib.util.spec_from_file_location(name, path)
             module = importlib.util.module_from_spec(spec)
@@ -2016,7 +2037,8 @@ def main():
     if not args.no_voice:
         start_plugin("voice", trigger, play_song, hub.show, cfg["wake_phrase"], listen_now,
                      lambda state: hub.update(voice_state=state), navigate, assist,
-                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"], chat_reply)
+                     navigator["nav"].speech if navigator["nav"] else None, cfg["piper_voice"], chat_reply,
+                     cfg["microphone"])
     start_https(int(cfg["https_port"]))
 
     port = int(cfg["port"])

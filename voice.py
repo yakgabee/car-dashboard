@@ -233,10 +233,31 @@ def recognizer(rate):
     return vosk.KaldiRecognizer(vosk.Model(str(VOSK_MODEL)), rate)
 
 
-def listen(listener, speaker, listen_now=None, announcements=None):
+def pick_microphone(wanted=""):
+    """The input to listen on: one whose name contains `wanted` ("microphone" in config.json),
+    else the system default, else the first one that has a microphone.
+    Returns (device index, or None for the default; sample rate; name)."""
+    inputs = [(i, d) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
+    if not inputs:
+        raise RuntimeError("no microphone found (is the camera plugged in? arecord -l lists them)")
+    print("[voice] microphones: " + ", ".join(f'{i} "{d["name"]}"' for i, d in inputs))
+    if wanted:
+        for i, d in inputs:
+            if wanted.lower() in d["name"].lower():
+                return i, int(d["default_samplerate"]), d["name"]
+        print(f'[voice] no microphone named "{wanted}", trying the default')
+    try:
+        d = sd.query_devices(kind="input")
+        return None, int(d["default_samplerate"]), d["name"]
+    except sd.PortAudioError:   # no default input set (seen on Pi OS): take the first one
+        i, d = inputs[0]
+        return i, int(d["default_samplerate"]), d["name"]
+
+
+def listen(listener, speaker, listen_now=None, announcements=None, microphone=""):
     """Feed the microphone to Vosk forever. listen_now is set by the screen's mic button;
     announcements is a queue of sentences to speak (turn-by-turn directions)."""
-    rate = int(sd.query_devices(kind="input")["default_samplerate"])
+    device, rate, mic_name = pick_microphone(microphone)
     rec = recognizer(rate)
     chunks = queue.Queue()
 
@@ -244,8 +265,9 @@ def listen(listener, speaker, listen_now=None, announcements=None):
         if not speaker.talking.is_set():
             chunks.put(bytes(indata))
 
-    with sd.RawInputStream(samplerate=rate, blocksize=rate // 4, dtype="int16", channels=1, callback=on_audio):
-        print(f"[voice] listening at {rate} Hz")
+    with sd.RawInputStream(device=device, samplerate=rate, blocksize=rate // 4, dtype="int16", channels=1,
+                           callback=on_audio):
+        print(f'[voice] listening at {rate} Hz on "{mic_name}"')
         while True:
             if listen_now is not None and listen_now.is_set():
                 listen_now.clear()
@@ -281,13 +303,13 @@ def listen(listener, speaker, listen_now=None, announcements=None):
 
 
 def run(trigger, play_song, show, wake_phrase="hey bitch", listen_now=None, set_state=lambda state: None,
-        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None):
+        navigate=None, assist=None, announcements=None, voice_name=DEFAULT_VOICE, on_text=None, microphone=""):
     """Called by dashboard.py in a background thread. listen_now: the Claude page's talk button.
     on_text(question, answer): where button answers go (shown on screen, not spoken)."""
     speaker = Speaker(voice_name)
     listener = Listener(wake_phrase, speaker, trigger, play_song, show, set_state, navigate, assist, on_text)
     set_state("idle")
-    listen(listener, speaker, listen_now, announcements)
+    listen(listener, speaker, listen_now, announcements, microphone)
 
 
 def recognise_file(path):
@@ -306,6 +328,7 @@ def main():
     parser.add_argument("--file", help="recognise a WAV file instead of the microphone")
     parser.add_argument("--wake", default="hey bitch", help="wake phrase (default: hey bitch)")
     parser.add_argument("--voice", default=DEFAULT_VOICE, help="Piper voice name in models/")
+    parser.add_argument("--mic", default="", help="part of the microphone's name (the log lists them)")
     args = parser.parse_args()
 
     if args.say:
@@ -322,7 +345,7 @@ def main():
         return
     print(f'Voice test: no Spotify. Say "{args.wake}, play <song>". Ctrl+C to quit.')
     try:
-        listen(listener, speaker)
+        listen(listener, speaker, microphone=args.mic)
     except KeyboardInterrupt:
         pass
 

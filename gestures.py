@@ -16,6 +16,7 @@ To test the camera on its own, with a preview window and no Spotify
 (on the Pi use the .venv Python, from a terminal on the Pi's desktop):
     .venv/bin/python gestures.py              # press q in the window to quit
     .venv/bin/python gestures.py --camera 1
+    .venv/bin/python gestures.py --check      # does MediaPipe run on this computer? (no camera needed)
 Without --camera it uses "camera" from config.json, like the dashboard.
 """
 
@@ -239,10 +240,25 @@ def run(trigger, camera=CAMERA_INDEX):
     watch(trigger, camera=camera)
 
 
+def check():
+    """Run the hand model once on a blank picture. dashboard.py runs this in a separate process
+    first, because a MediaPipe built for newer CPUs kills the whole program ("Illegal instruction")."""
+    import numpy as np
+    landmarker = make_landmarker()
+    blank = np.zeros((96, 96, 3), dtype=np.uint8)
+    landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=blank), 1)
+    landmarker.close()
+    print(f"MediaPipe {mp.__version__} works.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--camera", type=int, default=None, help='camera index (default: "camera" in config.json, else 0)')
+    parser.add_argument("--check", action="store_true", help="only check that MediaPipe runs on this computer (no camera)")
     args = parser.parse_args()
+    if args.check:
+        check()
+        return
     if args.camera is None:
         args.camera = configured_camera()
     if sys.platform.startswith("linux"):

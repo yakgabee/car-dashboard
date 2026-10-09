@@ -18,7 +18,7 @@ cryptography
 anthropic
 
 # Hand gestures (gestures.py)
-mediapipe       # brings OpenCV (opencv-contrib-python); don't add opencv-python too, two cv2 copies clash
+mediapipe       # Pi 4: mediapipe==0.10.18 on Python 3.12 (1.x needs AES, which the Pi 4 CPU lacks); install.sh does this. Brings OpenCV (opencv-contrib-python); don't add opencv-python too, two cv2 copies clash
 numpy
 
 # Voice (voice.py)
