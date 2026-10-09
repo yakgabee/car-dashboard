@@ -259,6 +259,15 @@ background threads do the work so a slow network call never freezes the screen.
   Needs desktop autologin, an existing config.json and a cached Spotify
   login. Tested in the sandbox with a stand-in Chromium (launch, single
   copy, restart); NOT tested on a Pi.
+  Exit button (owner asked): a small power icon at the right of the header
+  opens "Exit the dashboard?" (Cancel / Exit). Exit -> `POST /api/exit`
+  writes `logs/exit-requested` and the process exits 0.5 s later. start.sh
+  sees the flag: the dashboard loop stops instead of restarting, the
+  Chromium loop kills the browser (plus `pkill -f -- "--kiosk $URL"` in case
+  the launcher handed off) and stops, then start.sh ends. start.sh deletes
+  the flag when it starts, so the next boot runs normally. Without start.sh
+  (PC) it just stops the server; the page says "Dashboard closed". Tested
+  with start.sh + a stand-in Chromium: Cancel, Exit, nothing restarted.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
   `install.sh` (owner asked) does the whole setup: apt (python3-venv,
   python3-dev, libportaudio2, libgl1, libegl1, libgles2, curl, Chromium if missing), `.venv`,

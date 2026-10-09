@@ -90,6 +90,7 @@ PHONE
 
 import argparse
 import importlib.util
+import os
 import json
 import queue
 import re
@@ -821,6 +822,20 @@ def api_voice_listen():
     return jsonify(ok=True)
 
 
+EXIT_FLAG = HERE / "logs" / "exit-requested"     # start.sh sees it and stops restarting
+
+
+@app.post("/api/exit")
+def api_exit():
+    """The Exit button: stop the dashboard for good. start.sh then closes Chromium and stops
+    restarting until it is run again (the next boot, or by hand)."""
+    EXIT_FLAG.parent.mkdir(exist_ok=True)
+    EXIT_FLAG.write_text(time.strftime("%Y-%m-%d %H:%M:%S\n"))
+    print("[dashboard] Exit button pressed: stopping, no restart")
+    threading.Timer(0.5, os._exit, args=(0,)).start()     # let this answer reach the page first
+    return jsonify(ok=True)
+
+
 @app.post("/api/position")
 def api_position():
     """The phone page sends its GPS position here while location sharing is on."""
@@ -1296,6 +1311,19 @@ PAGE = r"""<!doctype html>
   #now { display: flex; align-items: center; gap: 22px; flex-shrink: 0; }
   #date, #weather { font-size: 21px; color: var(--muted); }
   #weather { display: flex; align-items: center; gap: 8px; }
+  #exitBtn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: transparent;
+             display: grid; place-items: center; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #exitBtn svg { width: 22px; height: 22px; stroke: var(--muted); }
+  #exitAsk { position: fixed; inset: 0; z-index: 2000; display: none; place-items: center; background: rgba(0, 0, 0, 0.6); }
+  #exitAsk.show { display: grid; }
+  .exitBox { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 30px 34px;
+             display: flex; flex-direction: column; align-items: center; gap: 22px; transform: scale(var(--scale, 1)); }
+  .exitBox h2 { font-size: 32px; font-weight: 700; }
+  .exitBox p { font-size: 20px; color: var(--muted); text-align: center; max-width: 440px; }
+  .exitRow { display: flex; gap: 18px; }
+  .exitRow button { height: 64px; min-width: 170px; border-radius: 16px; font: inherit; font-size: 24px; font-weight: 600;
+                    cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .exitRow #exitYes { background: var(--warn); border-color: var(--warn); color: #fff; }
   #weatherIcon { width: 26px; height: 26px; stroke: var(--muted); display: none; }
   #time { font-size: 38px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 
@@ -1427,6 +1455,7 @@ PAGE = r"""<!doctype html>
         <svg id="weatherIcon" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
         <span id="temp">--&deg;</span>
       </div>
+      <button id="exitBtn" type="button" aria-label="Exit the dashboard"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
     </div>
   </header>
 
@@ -1548,6 +1577,17 @@ PAGE = r"""<!doctype html>
       </button>
       <div class="talkLabel">Claude</div>
       <div class="talkHint" id="talkHint"></div>
+    </div>
+  </div>
+</div>
+
+<div id="exitAsk">
+  <div class="exitBox">
+    <h2>Exit the dashboard?</h2>
+    <p id="exitNote">It closes and won't restart until the Pi starts again.</p>
+    <div class="exitRow">
+      <button id="exitNo" type="button">Cancel</button>
+      <button id="exitYes" type="button">Exit</button>
     </div>
   </div>
 </div>
@@ -1898,7 +1938,9 @@ function render(s) {
     lastAction = s.last_action.id;
   } else if (!s.last_action && lastAction === null) { lastAction = 0; }
 }
+let stopped = false;        // after the Exit button: stop asking a server that is gone
 async function tick() {
+  if (stopped) return;
   try {
     const r = await fetch("/api/state", {cache: "no-store"});
     const s = await r.json();
@@ -1913,6 +1955,15 @@ $("art").addEventListener("click", () => setView("lyrics"));
 $("lyArt").addEventListener("click", () => setView("home"));
 $("lyCover").addEventListener("error", () => $("lyArt").classList.remove("has-img"));
 $("mic").addEventListener("click", () => setView("assistant"));
+$("exitBtn").addEventListener("click", () => $("exitAsk").classList.add("show"));
+$("exitNo").addEventListener("click", () => $("exitAsk").classList.remove("show"));
+$("exitYes").addEventListener("click", async () => {
+  try {
+    await fetch("/api/exit", {method: "POST"});
+    stopped = true;
+    document.querySelector(".exitBox").innerHTML = "<h2>Dashboard closed</h2><p>Start it again with start.sh or a restart of the Pi.</p>";
+  } catch (e) { toast("Dashboard not reachable"); $("exitAsk").classList.remove("show"); }
+});
 for (const b of document.querySelectorAll(".ctlBtn"))
   b.addEventListener("click", () => {
     if (b.dataset.action === "play_pause")       // flip now; the next poll confirms
