@@ -71,7 +71,7 @@ background threads do the work so a slow network call never freezes the screen.
   rebuilt). And `start_plugin` first runs `gestures.py --check` (hand model
   on a blank picture) in a separate process; if that dies from a signal,
   gestures stay off with an on-screen reason and the buttons show.
-  gestures.py tested with 0.10.18 on x86 Python 3.12; NOT yet on the Pi.
+  Owner confirmed after this fix: everything works on the Pi 4 (gestures, voice, demo).
   No volume gestures: point up/down for volume was built and removed (owner
   decided against it; iPhones refuse remote volume anyway).
 - Weather (stage 3, done): `weather_loop` polls OpenWeather current weather
