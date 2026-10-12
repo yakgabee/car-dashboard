@@ -6,6 +6,7 @@
     2 fingers (index/middle) right      -> next
     2 fingers (index/middle) left       -> previous
     Peace sign (2 fingers up)           -> switch hands-free / on-screen buttons
+    L (thumb out + index finger up)     -> lyrics page on / off
 
 Each gesture is carried out one second after it is recognised. Each gesture
 fires once. To repeat it (for example, to skip twice), drop your
@@ -64,9 +65,21 @@ def finger_extended(lm, name):
     return dist(lm[tip], lm[WRIST]) > dist(lm[pip], lm[WRIST]) * 1.15
 
 
+THUMB_TIP = 4
+
+
+def thumb_out(lm):
+    """The thumb sticks out (as in an L) when its tip is well away from the index knuckle;
+    tucked in a fist it lies against it."""
+    return dist(lm[THUMB_TIP], lm[INDEX_MCP]) > dist(lm[WRIST], lm[INDEX_MCP]) * 0.6
+
+
 def classify(lm):
-    """Return 'play', 'pause', 'next', 'previous', 'peace' or None for a list of 21 landmarks."""
+    """Return 'play', 'pause', 'next', 'previous', 'peace', 'lyrics' or None for 21 landmarks."""
     ext = {name: finger_extended(lm, name) for name in FINGERS}
+
+    if ext["index"] and not ext["middle"] and not ext["ring"] and not ext["pinky"] and thumb_out(lm):
+        return "lyrics"     # an L: index finger and thumb out, the rest curled
 
     if not any(ext.values()):
         return "pause"

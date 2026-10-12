@@ -47,7 +47,13 @@ background threads do the work so a slow network call never freezes the screen.
   (what start_plugin hands to gestures.run) flips `Hub.control_mode`
   "hands"/"buttons", toasts "Buttons on"/"Hands-free on", and while
   "buttons" drops every other gesture. Screen buttons, voice and the HTTP
-  API still go through `trigger`. Not saved across restarts (starts "hands"). A gesture must hold 6 frames to be
+  API still go through `trigger`. Not saved across restarts (starts "hands"). An L (thumb out + index
+  finger up, others curled; `thumb_out()` = thumb tip farther than 0.6 x
+  wrist-to-index-knuckle from the index knuckle) -> "lyrics" ->
+  `trigger("toggle_view")`: lyrics page on / off (owner asked), also in
+  buttons mode. Index alone with the thumb tucked is still nothing. Tested
+  with synthetic landmarks (L, tilted L, pointing, fist, thumbs-up, open,
+  peace, next) and the toggle. A gesture must hold 6 frames to be
   recognised, then is carried out 1 s later (`DELAY_S`, owner asked: a
   delay, not a 1 s hold), and fires once until the hand drops or changes
   (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
@@ -389,7 +395,7 @@ because the car may be offline):
 
 - Is the 7-inch display a touchscreen, and what is its resolution?
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
-- Gestures: play, pause, next, previous only; no volume gestures (decided).
+- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics); no volume gestures (decided).
 - Assistant start: wake phrase chosen ("hey bitch").
 - Direction strip on the lyrics page: added, only while a route is active
   (chosen while building; easy to drop).

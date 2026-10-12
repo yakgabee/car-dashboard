@@ -29,6 +29,7 @@ GESTURES
         Open hand -> play          Fist -> pause
         2 fingers right -> next    2 fingers left -> previous
         Peace sign -> switch between hands-free and on-screen buttons
+        L (thumb + index finger) -> lyrics page on / off
     Test the camera on its own, with a preview window:  python3 gestures.py
 
     Any gesture code works if it has a function named run:
@@ -249,6 +250,8 @@ def gesture_trigger(action):
             hub.data["control_mode"] = mode
         hub.show("Buttons on" if mode == "buttons" else "Hands-free on")
         return True
+    if action == "lyrics":          # the L: lyrics page on / off; works in buttons mode too
+        return trigger("toggle_view")
     if hub.get("control_mode") == "buttons":
         return False
     return trigger(action)
