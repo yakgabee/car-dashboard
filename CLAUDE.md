@@ -53,7 +53,12 @@ background threads do the work so a slow network call never freezes the screen.
   `trigger("toggle_view")`: lyrics page on / off (owner asked), also in
   buttons mode. Index alone with the thumb tucked is still nothing. Tested
   with synthetic landmarks (L, tilted L, pointing, fist, thumbs-up, open,
-  peace, next) and the toggle. A gesture must hold 6 frames to be
+  peace, next) and the toggle. Index finger alone pointing up with the thumb
+  tucked -> "claude" (owner asked): `trigger("assistant")` (Claude page)
+  and, if `voice_state` is "idle", `listen_now.set()` like the talk button
+  (not while listening: a second set would cancel); "Voice is off" toast if
+  voice is off. Works in buttons mode. Sideways or down = nothing. Tested
+  with synthetic landmarks and the idle / listening / off / buttons cases. A gesture must hold 6 frames to be
   recognised, then is carried out 1 s later (`DELAY_S`, owner asked: a
   delay, not a 1 s hold), and fires once until the hand drops or changes
   (`Gestures` class). The preview window shows what is waiting. Problems (library missing, no camera) show
@@ -395,7 +400,7 @@ because the car may be offline):
 
 - Is the 7-inch display a touchscreen, and what is its resolution?
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
-- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics); no volume gestures (decided).
+- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics), index up (Claude); no volume gestures (decided).
 - Assistant start: wake phrase chosen ("hey bitch").
 - Direction strip on the lyrics page: added, only while a route is active
   (chosen while building; easy to drop).
