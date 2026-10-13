@@ -306,6 +306,9 @@ greeting (`"name"` in config.json), date and time, weather placeholder `--°`,
 a "No route" map panel showing the destination name, a next-direction strip,
 song picture, title, artist and progress bar. No on-screen buttons; the toast
 still confirms each gesture. Spotify errors show in red under the progress bar.
+- Clock (owner asked): 12-hour with a smaller muted AM/PM (`#clockHM` +
+  `#ampm`), worked out from getHours() so the Pi's locale can't make it
+  24-hour. `car_state()` tells Claude the time as "%I:%M %p" too.
 - Theme: `"theme": "dark" | "light"` in config.json, or `?theme=light`.
 - Layout is drawn at 1024x600 and scaled to fit the screen.
 - Barlow is bundled in `fonts/` (OFL license included) and served at `/fonts/`.

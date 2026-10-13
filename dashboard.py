@@ -576,7 +576,7 @@ def car_state():
     s = hub.snapshot()
     w = s["weather"]
     return {
-        "time": time.strftime("%A %B %d %Y, %H:%M"),     # full date: Claude doesn't know today's date
+        "time": time.strftime("%A %B %d %Y, %I:%M %p"),     # full date: Claude doesn't know today's date
         "now_playing": f"{s['title']} by {s['artist']}" if s["title"] else None,
         "music_playing": s["playing"],
         "song_position": (f"{s['progress_ms'] // 60000}:{s['progress_ms'] // 1000 % 60:02d} of "
@@ -1337,6 +1337,7 @@ PAGE = r"""<!doctype html>
   .exitRow #exitYes { background: var(--warn); border-color: var(--warn); color: #fff; }
   #weatherIcon { width: 26px; height: 26px; stroke: var(--muted); display: none; }
   #time { font-size: 38px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  #ampm { font-size: 20px; font-weight: 600; color: var(--muted); margin-left: 5px; letter-spacing: 0.02em; }
 
   main { display: grid; grid-template-columns: 580px 352px; gap: 28px; height: 408px; flex-shrink: 0; }
   .left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -1461,7 +1462,7 @@ PAGE = r"""<!doctype html>
     <div id="hello">Hello</div>
     <div id="now">
       <div id="date"></div>
-      <div id="time">--:--</div>
+      <div id="time"><span id="clockHM">--:--</span><span id="ampm"></span></div>
       <div id="weather">
         <svg id="weatherIcon" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
         <span id="temp">--&deg;</span>
@@ -1637,7 +1638,9 @@ function fit() {
 }
 function clock() {
   const now = new Date();
-  $("time").textContent = now.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"}).replace(/\s?[AP]M/i, "");
+  const h = now.getHours();            // 12-hour clock with AM/PM, whatever the Pi's language setting
+  $("clockHM").textContent = (h % 12 || 12) + ":" + String(now.getMinutes()).padStart(2, "0");
+  $("ampm").textContent = h < 12 ? "AM" : "PM";
   $("date").textContent = now.toLocaleDateString([], {weekday: "short", month: "short", day: "numeric"});
 }
 function toast(text) {
