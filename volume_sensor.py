@@ -103,16 +103,39 @@ def raw_test(trigger_pin, echo_pin, pings=10):
     """Sends pings by hand (lgpio, no gpiozero) and reports what the Echo pin does."""
     import lgpio
     chip = None
-    for number in (0, 4):           # Pi 4: gpiochip0 (Pi 5: gpiochip4)
+    for number in range(8):         # the chip with the header pins: "pinctrl-bcm2711" on a Pi 4
         try:
-            chip = lgpio.gpiochip_open(number)
-            break
+            handle = lgpio.gpiochip_open(number)
         except Exception:
-            pass
+            continue
+        try:
+            label = str(lgpio.gpio_get_chip_info(handle)[3])
+        except Exception:
+            label = ""
+        if "pinctrl" in label or "rp1" in label:
+            chip = handle
+            print(f"GPIO chip: gpiochip{number} ({label})")
+            break
+        lgpio.gpiochip_close(handle)
     if chip is None:
-        print("Could not open the Pi's GPIO chip.")
-        return
+        try:
+            chip = lgpio.gpiochip_open(0)
+            print("GPIO chip: gpiochip0")
+        except Exception as err:
+            print(f"Could not open the Pi's GPIO chip: {err}")
+            return
     try:
+        # Echo side first, without the sensor: the 2 kOhm resistor ties GPIO 24 to GND,
+        # so even with the Pi's weak pull-up switched on it must read LOW.
+        lgpio.gpio_claim_input(chip, echo_pin, lgpio.SET_PULL_UP)
+        time.sleep(0.05)
+        echo_tied = lgpio.gpio_read(chip, echo_pin) == 0
+        lgpio.gpio_free(chip, echo_pin)
+        if echo_tied:
+            print(f"GPIO {echo_pin} (pin 18): connected to the resistors and GND. Good.")
+        else:
+            print(f"GPIO {echo_pin} (pin 18): NOT connected to GND through the 2 kOhm resistor.")
+            print("   Check: Pi pin 18 -> row 13, 2 kOhm from row 13 to row 17, Pi pin 6 (GND) -> row 17.")
         lgpio.gpio_claim_output(chip, trigger_pin, 0)
         lgpio.gpio_claim_input(chip, echo_pin)
         time.sleep(0.1)
@@ -152,6 +175,15 @@ def raw_test(trigger_pin, echo_pin, pings=10):
         print("Echo stays HIGH all the time. GPIO 24 is seeing a voltage it shouldn't:")
         print("check that row 13 only has the Pi pin 18 wire and the two resistor legs,")
         print("and that the 2 kOhm resistor really goes to the GND row (17).")
+    elif echo_tied:
+        print("The sensor never answered, but pin 18, the resistors and GND are fine.")
+        print("So it is one of these:")
+        print("  power: Pi pin 2 -> row 3 -> sensor VCC (must be pin 2 or 4 = 5V, not pin 1 = 3.3V)")
+        print("         sensor GND -> row 17")
+        print("  ping:  Pi pin 16 -> row 6 -> sensor Trig")
+        print("  echo:  sensor Echo -> row 9, and the 1 kOhm really from row 9 to row 13")
+        print("Push every wire end fully onto its pin; the sensor's pins are short.")
+        print("If all of that is right, the sensor itself may be faulty.")
     else:
         print("The sensor never answered. One of these is not connected:")
         print("  power: Pi pin 2 -> row 3 -> sensor VCC, and Pi pin 6 -> row 17 -> sensor GND")
