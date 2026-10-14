@@ -222,7 +222,7 @@ background threads do the work so a slow network call never freezes the screen.
   the newest value with `sp.volume()`; a 403 (iPhone) shows "This Spotify
   device doesn't allow remote volume." as `volume_sensor_error`. Still no
   on-screen volume buttons or volume gestures. `.venv/bin/python
-  volume_sensor.py` tests the sensor alone. Tested without hardware: the
+  volume_sensor.py` tests the sensor alone and prints the distance twice a second ("no echo" = nothing within 1 m). Tested without hardware: the
   mapping, settling, swipe-past, one bad echo, newest-only sending, the 403
   message, and the "gpiozero is not installed" message off the Pi. NOT
   tested with a real sensor.
