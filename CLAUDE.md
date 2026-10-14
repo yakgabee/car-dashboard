@@ -211,7 +211,7 @@ background threads do the work so a slow network call never freezes the screen.
   `"volume_sensor": true`; pins `sensor_trigger_pin` 23 / `sensor_echo_pin`
   24 (Echo needs a 1k/2k voltage divider: 5 V sensor, 3.3 V pins; wiring in
   the file's docstring; breadboard diagram + steps in
-  `docs/volume-sensor-wiring.svg` / `.png`, drawn for the owner's
+  `docs/volume-sensor-wiring.svg` / `.png` (and `docs/volume-sensor-pi.png`: the whole Pi board, to find the pins), drawn for the owner's
   female-to-male wires only (8 wires, no rails, no male-male jumpers): one
   column per signal, Pi wire in row a, sensor wire in row e: 5V col 3,
   Trig col 6, Echo col 9, 1k c9-c13, 2k d13-d17, Pi GPIO 24 a13, GND col 17). Hand at `volume_near_cm` 5 = 0 %, `volume_far_cm`

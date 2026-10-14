@@ -19,6 +19,7 @@ a voltage divider or the Pi can be damaged):
                      and from GPIO 24 -> 2 kOhm -> GND
 
 Breadboard picture with step-by-step instructions: docs/volume-sensor-wiring.png
+The same with the whole Pi board drawn, to find the pins: docs/volume-sensor-pi.png
 
 dashboard.py starts this when "volume_sensor": true is in config.json.
 Test it on its own (prints the distance and the volume it would set):
