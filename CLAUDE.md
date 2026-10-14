@@ -205,6 +205,23 @@ background threads do the work so a slow network call never freezes the screen.
   +/- strip, `volume_up`/`volume_down` actions, `Hub.volume`/`supports_volume`,
   config `volume_step` and Claude's volume controls are gone. The song
   picture stays 300x300 at the left of its column.
+- Volume sensor (owner asked, after the above): `volume_sensor.py`, an
+  HC-SR04 ultrasonic sensor on the Pi's pins (gpiozero `DistanceSensor`,
+  lgpio; install.sh adds both only on a Raspberry Pi). Off unless config
+  `"volume_sensor": true`; pins `sensor_trigger_pin` 23 / `sensor_echo_pin`
+  24 (Echo needs a 1k/2k voltage divider: 5 V sensor, 3.3 V pins; wiring in
+  the file's docstring). Hand at `volume_near_cm` 5 = 0 %, `volume_far_cm`
+  35 = 100 % (`volume_reverse` swaps). `Follower`: median of 5 readings at
+  10 Hz, the hand must be in range 4 readings (~0.4 s) so a hand passing
+  over does nothing, then changes of >= 4 % at most every 0.4 s. dashboard
+  `set_volume()` toasts "Volume N%" and wakes `volume_loop`, which sends only
+  the newest value with `sp.volume()`; a 403 (iPhone) shows "This Spotify
+  device doesn't allow remote volume." as `volume_sensor_error`. Still no
+  on-screen volume buttons or volume gestures. `.venv/bin/python
+  volume_sensor.py` tests the sensor alone. Tested without hardware: the
+  mapping, settling, swipe-past, one bad echo, newest-only sending, the 403
+  message, and the "gpiozero is not installed" message off the Pi. NOT
+  tested with a real sensor.
 - Lyrics page (stage 4, done): `lyrics.py` `Lyrics` thread watches the song
   in `Hub` and asks LRCLIB (`/api/get` with title, first artist, album and
   length, then `/api/search` with the title as is and without " - Remastered",
