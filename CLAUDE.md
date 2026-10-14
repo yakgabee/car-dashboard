@@ -211,8 +211,10 @@ background threads do the work so a slow network call never freezes the screen.
   `"volume_sensor": true`; pins `sensor_trigger_pin` 23 / `sensor_echo_pin`
   24 (Echo needs a 1k/2k voltage divider: 5 V sensor, 3.3 V pins; wiring in
   the file's docstring; breadboard diagram + steps in
-  `docs/volume-sensor-wiring.svg` / `.png`: sensor legs in j5-j8, 1k h7-h13,
-  2k i13-i19, f19 to GND rail, j13 to GPIO 24, g6 to GPIO 23). Hand at `volume_near_cm` 5 = 0 %, `volume_far_cm`
+  `docs/volume-sensor-wiring.svg` / `.png`, drawn for the owner's
+  female-to-male wires only (8 wires, no rails, no male-male jumpers): one
+  column per signal, Pi wire in row a, sensor wire in row e: 5V col 3,
+  Trig col 6, Echo col 9, 1k c9-c13, 2k d13-d17, Pi GPIO 24 a13, GND col 17). Hand at `volume_near_cm` 5 = 0 %, `volume_far_cm`
   35 = 100 % (`volume_reverse` swaps). `Follower`: median of 5 readings at
   10 Hz, the hand must be in range 4 readings (~0.4 s) so a hand passing
   over does nothing, then changes of >= 4 % at most every 0.4 s. dashboard
