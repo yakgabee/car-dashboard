@@ -67,9 +67,6 @@ group "screen, Spotify, weather, map" flask requests spotipy cryptography
 group "Claude assistant" anthropic
 group "voice" vosk sounddevice piper-tts
 group "hand gestures" numpy "$MEDIAPIPE"  # last: 0.10.18 needs numpy 1.x. Brings its own OpenCV (opencv-contrib-python)
-if grep -qi "raspberry pi" /proc/device-tree/model 2>/dev/null; then
-    group "volume sensor (HC-SR04 on the Pi's pins)" gpiozero lgpio
-fi
 
 echo "== Checking that everything imports"
 .venv/bin/python - <<'EOF'

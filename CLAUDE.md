@@ -83,8 +83,8 @@ background threads do the work so a slow network call never freezes the screen.
   on a blank picture) in a separate process; if that dies from a signal,
   gestures stay off with an on-screen reason and the buttons show.
   Owner confirmed after this fix: everything works on the Pi 4 (gestures, voice, demo).
-  No volume gestures: point up/down for volume was built and removed (owner
-  decided against it; iPhones refuse remote volume anyway).
+  Thumbs up / thumbs down = volume (see "Volume by gesture"). An earlier
+  point up/down volume gesture was removed.
 - Weather (stage 3, done): `weather_loop` polls OpenWeather current weather
   every 10 min for `weather_city` (Toronto,CA). Key in config.json as
   `openweather_api_key`. Header shows an icon and the temperature; problems go
@@ -201,31 +201,24 @@ background threads do the work so a slow network call never freezes the screen.
   missing library or a failed camera all show them), "always", "never".
   Tested in demo with --no-gestures: all four actions, both pages, with and
   without a route, 1024x600 and 800x480, no overflow.
-- No volume control at all (owner asked to remove it fully): the on-screen
-  +/- strip, `volume_up`/`volume_down` actions, `Hub.volume`/`supports_volume`,
-  config `volume_step` and Claude's volume controls are gone. The song
-  picture stays 300x300 at the left of its column.
-- Volume sensor (owner asked, after the above): `volume_sensor.py`, an
-  HC-SR04 ultrasonic sensor on the Pi's pins (gpiozero `DistanceSensor`,
-  lgpio; install.sh adds both only on a Raspberry Pi). Off unless config
-  `"volume_sensor": true`; pins `sensor_trigger_pin` 23 / `sensor_echo_pin`
-  24 (Echo needs a 1k/2k voltage divider: 5 V sensor, 3.3 V pins; wiring in
-  the file's docstring; breadboard diagram + steps in
-  `docs/volume-sensor-wiring.svg` / `.png` (and `docs/volume-sensor-pi.png`: the whole Pi board, to find the pins), drawn for the owner's
-  female-to-male wires only (8 wires, no rails, no male-male jumpers): one
-  column per signal, Pi wire in row a, sensor wire in row e: 5V col 3,
-  Trig col 6, Echo col 9, 1k c9-c13, 2k d13-d17, Pi GPIO 24 a13, GND col 17). Hand at `volume_near_cm` 5 = 0 %, `volume_far_cm`
-  35 = 100 % (`volume_reverse` swaps). `Follower`: median of 5 readings at
-  10 Hz, the hand must be in range 4 readings (~0.4 s) so a hand passing
-  over does nothing, then changes of >= 4 % at most every 0.4 s. dashboard
-  `set_volume()` toasts "Volume N%" and wakes `volume_loop`, which sends only
-  the newest value with `sp.volume()`; a 403 (iPhone) shows "This Spotify
-  device doesn't allow remote volume." as `volume_sensor_error`. Still no
-  on-screen volume buttons or volume gestures. `.venv/bin/python
-  volume_sensor.py` tests the sensor alone and prints the distance twice a second ("no echo" = nothing within 1 m); `--raw` pings the sensor by hand with lgpio and says whether it answered, never answered or Echo is stuck high, and first checks that GPIO 24 reads LOW with its pull-up on (proves pin 18 -> row 13 -> 2k -> GND); picks the gpiochip labelled pinctrl (tested with a fake lgpio). Tested without hardware: the
-  mapping, settling, swipe-past, one bad echo, newest-only sending, the 403
-  message, and the "gpiozero is not installed" message off the Pi. NOT
-  tested with a real sensor.
+- Volume by gesture (owner asked, replacing the HC-SR04 volume sensor, which was
+  built, never got an echo on the owner's breadboard, and was deleted with its
+  wiring pictures, the gpiozero/lgpio install and its config keys): thumbs up
+  = `volume_up`, thumbs down = `volume_down`, one `volume_step` (config, 10 %)
+  each. gestures.py `thumb_vertical()`: four fingers curled, thumb pointing
+  up/down (tip vs thumb MCP, 1.2x steeper than sideways) AND its tip more than
+  0.15 x wrist-to-middle-knuckle above / below every other landmark, so a
+  normal fist is still pause. Fires once per gesture like the others; ignored
+  in buttons mode. dashboard `trigger` hands them to `change_volume()` (no
+  action queue); `volume_loop` adds up the steps, starts from the value it
+  sent in the last 5 s (Spotify's reading lags), else `volume_now` from the
+  poll (`device.volume_percent` / `supports_volume`), else one
+  `current_playback()`, clamps 0-100, `sp.volume()`, toasts "Volume N%".
+  Refused (403 or supports_volume false, usual on iPhones): toast "Volume not
+  allowed" + `Hub.volume_error`. Tested: synthetic landmarks (upright and
+  sideways thumbs up/down, tucked fist, sideways thumb, open, L, index up),
+  demo over HTTP (50 -> 60 -> 70 -> 60), 403, clamp at 100, buttons mode.
+  No on-screen volume buttons; Claude has no volume control.
 - Lyrics page (stage 4, done): `lyrics.py` `Lyrics` thread watches the song
   in `Hub` and asks LRCLIB (`/api/get` with title, first artist, album and
   length, then `/api/search` with the title as is and without " - Remastered",
@@ -424,7 +417,7 @@ because the car may be offline):
 
 - Is the 7-inch display a touchscreen, and what is its resolution?
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
-- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics), index up (Claude); no volume gestures (decided).
+- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics), index up (Claude), thumbs up/down (volume).
 - Assistant start: wake phrase chosen ("hey bitch").
 - Direction strip on the lyrics page: added, only while a route is active
   (chosen while building; easy to drop).

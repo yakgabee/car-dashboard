@@ -8,6 +8,8 @@
     Peace sign (2 fingers up)           -> switch hands-free / on-screen buttons
     L (thumb out + index finger up)     -> lyrics page on / off
     Index finger up (thumb in)          -> Claude page, start listening
+    Thumbs up                           -> volume up (one step)
+    Thumbs down                         -> volume down (one step)
 
 Each gesture is carried out one second after it is recognised. Each gesture
 fires once. To repeat it (for example, to skip twice), drop your
@@ -66,7 +68,7 @@ def finger_extended(lm, name):
     return dist(lm[tip], lm[WRIST]) > dist(lm[pip], lm[WRIST]) * 1.15
 
 
-THUMB_TIP = 4
+THUMB_MCP, THUMB_TIP = 2, 4
 
 
 def thumb_out(lm):
@@ -75,8 +77,24 @@ def thumb_out(lm):
     return dist(lm[THUMB_TIP], lm[INDEX_MCP]) > dist(lm[WRIST], lm[INDEX_MCP]) * 0.6
 
 
+def thumb_vertical(lm):
+    """'volume_up' for a thumbs up, 'volume_down' for a thumbs down, else None (a plain fist).
+    The thumb must point up (or down) and its tip must be clearly above (or below) every
+    other point of the hand, so a fist with the thumb resting on the fingers doesn't count."""
+    dx = lm[THUMB_TIP].x - lm[THUMB_MCP].x
+    dy = lm[THUMB_TIP].y - lm[THUMB_MCP].y          # image y grows downward
+    rest = [p for i, p in enumerate(lm) if i not in (1, 2, 3, 4)]
+    margin = dist(lm[WRIST], lm[9]) * 0.15
+    if -dy > abs(dx) * 1.2 and lm[THUMB_TIP].y < min(p.y for p in rest) - margin:
+        return "volume_up"
+    if dy > abs(dx) * 1.2 and lm[THUMB_TIP].y > max(p.y for p in rest) + margin:
+        return "volume_down"
+    return None
+
+
 def classify(lm):
-    """Return 'play', 'pause', 'next', 'previous', 'peace', 'lyrics', 'claude' or None for 21 landmarks."""
+    """Return 'play', 'pause', 'next', 'previous', 'peace', 'lyrics', 'claude', 'volume_up',
+    'volume_down' or None for 21 landmarks."""
     ext = {name: finger_extended(lm, name) for name in FINGERS}
 
     if ext["index"] and not ext["middle"] and not ext["ring"] and not ext["pinky"]:
@@ -88,7 +106,7 @@ def classify(lm):
             return "claude"
 
     if not any(ext.values()):
-        return "pause"
+        return thumb_vertical(lm) or "pause"
 
     if all(ext.values()):
         return "play"

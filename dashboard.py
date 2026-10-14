@@ -31,6 +31,7 @@ GESTURES
         Peace sign -> switch between hands-free and on-screen buttons
         L (thumb + index finger) -> lyrics page on / off
         Index finger up -> Claude page, listening
+        Thumbs up -> volume up     Thumbs down -> volume down   ("volume_step" in config.json)
     Test the camera on its own, with a preview window:  python3 gestures.py
 
     Any gesture code works if it has a function named run:
@@ -145,17 +146,12 @@ DEFAULT_CONFIG = {
     "spotify_device": "",       # part of a device name to prefer when nothing is playing, e.g. "iPhone"
     "playback_buttons": "auto",  # previous/play-pause/next on screen: "auto" (only when the gesture camera isn't working), "always", "never"
     "microphone": "",           # part of the microphone's name; "" = the default (the voice log lists them)
-    "volume_sensor": False,     # true: HC-SR04 on the Pi's pins sets the Spotify volume (see volume_sensor.py)
-    "sensor_trigger_pin": 23,
-    "sensor_echo_pin": 24,
-    "volume_near_cm": 5,        # hand this close = 0 %...
-    "volume_far_cm": 35,        # ...this far = 100 % ("volume_reverse": true swaps them)
-    "volume_reverse": False,
+    "volume_step": 10,          # percent per thumbs up / thumbs down
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
 SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing"
-ACTIONS = ("play", "pause", "play_pause", "next", "previous")
+ACTIONS = ("play", "pause", "play_pause", "next", "previous", "volume_up", "volume_down")
 VIEWS = ("home", "lyrics", "assistant", "toggle_view")   # screen switches; trigger() handles them without Spotify
 COOLDOWN = {"home": 0.3, "lyrics": 0.3, "assistant": 0.3}   # seconds; others use 1.0
 LABELS = {
@@ -187,7 +183,7 @@ class Hub:
             "error": None,
             # plug-in and weather problems, kept apart from "error", which every Spotify poll clears
             "gestures_error": None,
-            "volume_sensor_error": None,
+            "volume_error": None,
             "gestures_running": False,
             "control_mode": "hands",    # "hands" (gestures play music) or "buttons" (on-screen buttons); the peace sign switches  # the gesture camera is working; when not, the screen shows playback buttons
             "voice_error": None,
@@ -282,6 +278,9 @@ def trigger(action):
         if now - _last_trigger.get(action, 0) < COOLDOWN.get(action, 1.0):
             return False
         _last_trigger[action] = now
+    if action in ("volume_up", "volume_down"):
+        change_volume(1 if action == "volume_up" else -1)
+        return True
     if action in VIEWS:
         with hub.lock:
             if action == "toggle_view":
@@ -321,7 +320,7 @@ class DemoPlayer:
         return {
             "is_playing": self.playing,
             "progress_ms": int(self.pos),
-            "device": {"name": "Demo phone"},
+            "device": {"name": "Demo phone", "volume_percent": self.vol, "supports_volume": True},
             "item": {"name": title, "uri": f"demo:{self.i}", "duration_ms": dur, "artists": [{"name": artist}],
                      "album": {"name": album, "images": []}},
         }
@@ -346,8 +345,10 @@ class DemoPlayer:
                  for i, t in enumerate(self.TRACKS) if words & set(re.findall(r"\w+", t[0].lower()))]
         return {"tracks": {"items": items[:limit]}}
 
+    vol = 50
+
     def volume(self, percent, device_id=None):
-        pass
+        self.vol = percent
 
     def next_track(self):
         self.i = (self.i + 1) % len(self.TRACKS); self.pos = 0.0; self.stamp = time.time()
@@ -403,6 +404,8 @@ def read_playback(pb):
         return
     item = pb["item"]
     device = pb.get("device") or {}
+    volume_now["percent"] = device.get("volume_percent")
+    volume_now["supported"] = device.get("supports_volume", True)
     if "album" in item:                                    # a song
         artist = ", ".join(a["name"] for a in item.get("artists", []))
         album = item["album"].get("name")
@@ -472,34 +475,56 @@ def action_loop(sp, sp_lock):
 
 player = {"sp": None, "lock": None, "device": ""}     # set in main(); voice commands use it
 
-volume_wanted = {"percent": None}   # latest from the volume sensor; volume_loop sends it
+volume_now = {"percent": None, "supported": True}    # the playing device's volume, from poll_loop
+volume_change = {"steps": 0, "sent": None, "sent_at": 0.0}   # thumbs up/down waiting for volume_loop
+volume_lock = threading.Lock()
 volume_ready = threading.Event()
+VOLUME_REFUSED = "This Spotify device doesn't allow remote volume (iPhones usually don't)."
 
 
-def set_volume(percent):
-    """Called by volume_sensor.py. Never blocks the sensor: only the newest value gets sent."""
-    volume_wanted["percent"] = percent
-    hub.show(f"Volume {percent}%")
+def change_volume(steps):
+    """Thumbs up (+1) / thumbs down (-1). Never blocks the camera: volume_loop talks to Spotify."""
+    with volume_lock:
+        volume_change["steps"] += steps
     volume_ready.set()
 
 
-def volume_loop():
+def volume_loop(step):
     while True:
         volume_ready.wait()
         volume_ready.clear()
-        percent = volume_wanted["percent"]
+        with volume_lock:
+            steps, volume_change["steps"] = volume_change["steps"], 0
         sp, sp_lock = player["sp"], player["lock"]
-        if sp is None or percent is None:
+        if not steps or sp is None:
             continue
         try:
+            # start from what we sent a moment ago (Spotify's reading lags), else from what it reports
+            base = volume_change["sent"] if time.time() - volume_change["sent_at"] < 5 else volume_now["percent"]
+            if base is None:
+                with sp_lock:
+                    device = (sp.current_playback() or {}).get("device") or {}
+                base, volume_now["supported"] = device.get("volume_percent"), device.get("supports_volume", True)
+            if not volume_now["supported"]:
+                hub.update(volume_error=VOLUME_REFUSED)
+                hub.show("Volume not allowed")
+                continue
+            if base is None:
+                hub.show("Nothing is playing")
+                continue
+            percent = max(0, min(100, base + steps * step))
             with sp_lock:
                 sp.volume(percent)
-            hub.update(volume_sensor_error=None)
+            volume_change["sent"], volume_change["sent_at"] = percent, time.time()
+            volume_now["percent"] = percent
+            hub.update(volume_error=None)
+            hub.show(f"Volume {percent}%")
         except Exception as err:
-            if getattr(err, "http_status", None) == 403:    # iPhones usually refuse remote volume
-                hub.update(volume_sensor_error="This Spotify device doesn't allow remote volume.")
+            if getattr(err, "http_status", None) == 403:
+                hub.update(volume_error=VOLUME_REFUSED)
+                hub.show("Volume not allowed")
             else:
-                hub.update(volume_sensor_error=explain(err)[0])
+                hub.update(volume_error=explain(err)[0])
 
 
 class NoDevice(Exception):
@@ -1983,7 +2008,7 @@ function render(s) {
   else cover.removeAttribute("src");
   $("art").classList.toggle("has-img", !!s.art);
   $("fill").style.width = s.duration_ms ? (100 * s.progress_ms / s.duration_ms) + "%" : "0";
-  $("error").textContent = [s.error, s.gestures_error, s.voice_error, s.volume_sensor_error, s.weather_error, s.nav_error]
+  $("error").textContent = [s.error, s.gestures_error, s.voice_error, s.volume_error, s.weather_error, s.nav_error]
     .filter(Boolean).join(" · ");
   renderWeather(s.weather);
   renderRoute(s);
@@ -2139,9 +2164,7 @@ def main():
         navigator["nav"] = module.Navigator(hub, cfg["mapbox_token"])
         threading.Thread(target=navigator["nav"].loop, name="navigation", daemon=True).start()
         print("[dashboard] navigation on (Mapbox)")
-    if cfg["volume_sensor"]:
-        threading.Thread(target=volume_loop, name="volume", daemon=True).start()
-        start_plugin("volume_sensor", set_volume, cfg)
+    threading.Thread(target=volume_loop, args=(int(cfg["volume_step"]),), name="volume", daemon=True).start()
     if not args.no_voice:
         start_plugin("voice", trigger, play_song, hub.show, cfg["wake_phrase"], listen_now,
                      lambda state: hub.update(voice_state=state), navigate, assist,
