@@ -18,6 +18,8 @@ a voltage divider or the Pi can be damaged):
     HC-SR04 Echo  -> 1 kOhm -> Pi pin 18 (GPIO 24) "sensor_echo_pin": 24
                      and from GPIO 24 -> 2 kOhm -> GND
 
+Breadboard picture with step-by-step instructions: docs/volume-sensor-wiring.png
+
 dashboard.py starts this when "volume_sensor": true is in config.json.
 Test it on its own (prints the distance and the volume it would set):
     .venv/bin/python volume_sensor.py
