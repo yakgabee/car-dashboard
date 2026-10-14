@@ -78,15 +78,19 @@ def open_sensor(trigger_pin, echo_pin):
     return DistanceSensor(echo=echo_pin, trigger=trigger_pin, max_distance=1.0)
 
 
-def run(set_volume, cfg):
-    """Called by dashboard.py in a thread. set_volume(percent) changes Spotify's volume."""
+def run(set_volume, cfg, show=None):
+    """Called by dashboard.py in a thread. set_volume(percent) changes Spotify's volume.
+    show(cm), if given, gets every reading (cm, or None for no echo): the stand-alone test prints them."""
     sensor = open_sensor(int(cfg.get("sensor_trigger_pin", 23)), int(cfg.get("sensor_echo_pin", 24)))
     follower = Follower(float(cfg.get("volume_near_cm", 5)), float(cfg.get("volume_far_cm", 35)),
                         bool(cfg.get("volume_reverse", False)))
     print("[volume sensor] watching")
     while True:
         cm = sensor.distance * 100      # gpiozero gives metres, 1.0 when nothing is in range
-        volume = follower.update(cm if cm < 99 else None, time.monotonic())
+        cm = cm if cm < 99 else None
+        if show:
+            show(cm)
+        volume = follower.update(cm, time.monotonic())
         if volume is not None:
             set_volume(volume)
         time.sleep(READ_EVERY_S)
@@ -101,8 +105,17 @@ def main():
         with open(path) as f:
             cfg = json.load(f)
     print("Volume sensor test: move your hand over the sensor. Ctrl+C to quit.")
+    print("Stop the dashboard first (it uses the same pins).")
+    print("Nothing in front of the sensor shows 'no echo'; a hand should show its distance.")
+    last = [0.0]
+
+    def show(cm):     # twice a second is enough to read
+        if time.monotonic() - last[0] >= 0.5:
+            last[0] = time.monotonic()
+            print(f"distance: {'no echo (nothing within 1 m)' if cm is None else f'{cm:.0f} cm'}")
+
     try:
-        run(lambda v: print(f"   -> volume {v}%"), cfg)
+        run(lambda v: print(f"   -> volume {v}%"), cfg, show)
     except KeyboardInterrupt:
         pass
 
