@@ -24,6 +24,8 @@ The same with the whole Pi board drawn, to find the pins: docs/volume-sensor-pi.
 dashboard.py starts this when "volume_sensor": true is in config.json.
 Test it on its own (prints the distance and the volume it would set):
     .venv/bin/python volume_sensor.py
+Always "no echo"? The low-level test pings the sensor itself and says what it sees:
+    .venv/bin/python volume_sensor.py --raw
 """
 
 import statistics
@@ -97,14 +99,81 @@ def run(set_volume, cfg, show=None):
         time.sleep(READ_EVERY_S)
 
 
+def raw_test(trigger_pin, echo_pin, pings=10):
+    """Sends pings by hand (lgpio, no gpiozero) and reports what the Echo pin does."""
+    import lgpio
+    chip = None
+    for number in (0, 4):           # Pi 4: gpiochip0 (Pi 5: gpiochip4)
+        try:
+            chip = lgpio.gpiochip_open(number)
+            break
+        except Exception:
+            pass
+    if chip is None:
+        print("Could not open the Pi's GPIO chip.")
+        return
+    try:
+        lgpio.gpio_claim_output(chip, trigger_pin, 0)
+        lgpio.gpio_claim_input(chip, echo_pin)
+        time.sleep(0.1)
+        answered = stuck = 0
+        for i in range(pings):
+            if lgpio.gpio_read(chip, echo_pin):
+                stuck += 1
+                print(f"ping {i + 1}: Echo is already HIGH before the ping")
+                time.sleep(0.2)
+                continue
+            lgpio.gpio_write(chip, trigger_pin, 1)
+            time.sleep(0.00001)
+            lgpio.gpio_write(chip, trigger_pin, 0)
+            start = end = None
+            t0 = time.perf_counter()
+            while time.perf_counter() - t0 < 0.06:
+                high = lgpio.gpio_read(chip, echo_pin)
+                if high and start is None:
+                    start = time.perf_counter()
+                elif not high and start is not None:
+                    end = time.perf_counter()
+                    break
+            if start is None:
+                print(f"ping {i + 1}: no answer")
+            else:
+                answered += 1
+                cm = ((end or time.perf_counter()) - start) * 34300 / 2
+                print(f"ping {i + 1}: answered, about {cm:.0f} cm")
+            time.sleep(0.2)
+    finally:
+        lgpio.gpiochip_close(chip)
+    print()
+    if answered:
+        print(f"The sensor answered {answered} of {pings} pings: the wiring works.")
+        print("Run .venv/bin/python volume_sensor.py again; if that still says no echo, tell Claude.")
+    elif stuck:
+        print("Echo stays HIGH all the time. GPIO 24 is seeing a voltage it shouldn't:")
+        print("check that row 13 only has the Pi pin 18 wire and the two resistor legs,")
+        print("and that the 2 kOhm resistor really goes to the GND row (17).")
+    else:
+        print("The sensor never answered. One of these is not connected:")
+        print("  power: Pi pin 2 -> row 3 -> sensor VCC, and Pi pin 6 -> row 17 -> sensor GND")
+        print("  ping:  Pi pin 16 -> row 6 -> sensor Trig")
+        print("  echo:  sensor Echo -> row 9 -> 1 kOhm -> row 13 -> Pi pin 18")
+        print("Push every wire end fully onto its pin; the sensor's pins are short.")
+
+
 def main():
     import json
     import os
+    import sys
     cfg = {}
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
     if os.path.exists(path):
         with open(path) as f:
             cfg = json.load(f)
+    if "--raw" in sys.argv:
+        print("Low-level sensor test: hold your hand about 20 cm above the sensor.")
+        print("Stop the dashboard first (it uses the same pins).")
+        raw_test(int(cfg.get("sensor_trigger_pin", 23)), int(cfg.get("sensor_echo_pin", 24)))
+        return
     print("Volume sensor test: move your hand over the sensor. Ctrl+C to quit.")
     print("Stop the dashboard first (it uses the same pins).")
     print("Nothing in front of the sensor shows 'no echo'; a hand should show its distance.")
