@@ -219,6 +219,26 @@ background threads do the work so a slow network call never freezes the screen.
   sideways thumbs up/down, tucked fist, sideways thumb, open, L, index up),
   demo over HTTP (50 -> 60 -> 70 -> 60), 403, clamp at 100, buttons mode.
   No on-screen volume buttons; Claude has no volume control.
+- Volume sensor, restored (owner got female-to-female wires, wants to try
+  without the breadboard): `volume_sensor.py` is back, off unless config
+  `"volume_sensor": true` (pins `sensor_trigger_pin` 23 / `sensor_echo_pin` 24,
+  `volume_near_cm` 5 = 0 %, `volume_far_cm` 35 = 100 %, `volume_reverse`;
+  `Follower`: median of 5 at 10 Hz, 4 readings in range, >= 4 % steps at most
+  every 0.4 s). Feeds dashboard `set_volume(percent)`, which shares
+  `volume_loop` with the thumbs (newest absolute value wins; thumbs step from
+  it). install.sh adds gpiozero + lgpio on a Pi again. Wiring in the docstring,
+  no breadboard: first a safe 3.3 V test (VCC pin 1, Trig 16, Echo 18, GND 6,
+  no resistors; some HC-SR04s work on 3.3 V, the HC-SR04P is made for it),
+  else 5 V (VCC pin 2) with Echo -> 1k -> pin 18 and 2k from pin 18 to pin 20
+  (GND), legs twisted into the female ends. The breadboard pictures stay
+  deleted. On the breadboard the owner's sensor never answered a ping (pin 18
+  / resistor / GND path not yet checked when it was removed).
+  `volume_sensor.py` shows the distance; `--raw` pings by hand with lgpio
+  (gpiochip labelled pinctrl), first checks GPIO 24 reads LOW with its
+  pull-up on (= reaches a powered sensor's Echo or the 2k), then says
+  answered / never answered (+ which side) / Echo stuck high. Tested with a
+  fake lgpio and fake Spotify (sensor 73 %, thumb down -> 63 %, newest only);
+  NOT tested with a real sensor.
 - Lyrics page (stage 4, done): `lyrics.py` `Lyrics` thread watches the song
   in `Hub` and asks LRCLIB (`/api/get` with title, first artist, album and
   length, then `/api/search` with the title as is and without " - Remastered",
@@ -417,7 +437,7 @@ because the car may be offline):
 
 - Is the 7-inch display a touchscreen, and what is its resolution?
 - Location source: the phone page (chosen). A USB GPS dongle stays the fallback if it proves flaky.
-- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics), index up (Claude), thumbs up/down (volume).
+- Gestures: play, pause, next, previous, peace (buttons mode), L (lyrics), index up (Claude), thumbs up/down (volume); optional HC-SR04 volume sensor.
 - Assistant start: wake phrase chosen ("hey bitch").
 - Direction strip on the lyrics page: added, only while a route is active
   (chosen while building; easy to drop).

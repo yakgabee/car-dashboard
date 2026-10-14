@@ -147,6 +147,12 @@ DEFAULT_CONFIG = {
     "playback_buttons": "auto",  # previous/play-pause/next on screen: "auto" (only when the gesture camera isn't working), "always", "never"
     "microphone": "",           # part of the microphone's name; "" = the default (the voice log lists them)
     "volume_step": 10,          # percent per thumbs up / thumbs down
+    "volume_sensor": False,     # true: HC-SR04 on the Pi's pins also sets the volume (see volume_sensor.py)
+    "sensor_trigger_pin": 23,
+    "sensor_echo_pin": 24,
+    "volume_near_cm": 5,        # hand this close = 0 %...
+    "volume_far_cm": 35,        # ...this far = 100 % ("volume_reverse": true swaps them)
+    "volume_reverse": False,
     "camera": 0,                # gesture camera; try python3 gestures.py --camera N to find the number
 }
 
@@ -476,7 +482,7 @@ def action_loop(sp, sp_lock):
 player = {"sp": None, "lock": None, "device": ""}     # set in main(); voice commands use it
 
 volume_now = {"percent": None, "supported": True}    # the playing device's volume, from poll_loop
-volume_change = {"steps": 0, "sent": None, "sent_at": 0.0}   # thumbs up/down waiting for volume_loop
+volume_change = {"steps": 0, "absolute": None, "sent": None, "sent_at": 0.0}   # waiting for volume_loop
 volume_lock = threading.Lock()
 volume_ready = threading.Event()
 VOLUME_REFUSED = "This Spotify device doesn't allow remote volume (iPhones usually don't)."
@@ -489,19 +495,27 @@ def change_volume(steps):
     volume_ready.set()
 
 
+def set_volume(percent):
+    """Called by volume_sensor.py with the volume the hand asks for. Only the newest value is sent."""
+    with volume_lock:
+        volume_change["absolute"], volume_change["steps"] = percent, 0
+    volume_ready.set()
+
+
 def volume_loop(step):
     while True:
         volume_ready.wait()
         volume_ready.clear()
         with volume_lock:
             steps, volume_change["steps"] = volume_change["steps"], 0
+            absolute, volume_change["absolute"] = volume_change["absolute"], None
         sp, sp_lock = player["sp"], player["lock"]
-        if not steps or sp is None:
+        if (not steps and absolute is None) or sp is None:
             continue
         try:
             # start from what we sent a moment ago (Spotify's reading lags), else from what it reports
             base = volume_change["sent"] if time.time() - volume_change["sent_at"] < 5 else volume_now["percent"]
-            if base is None:
+            if base is None and absolute is None:
                 with sp_lock:
                     device = (sp.current_playback() or {}).get("device") or {}
                 base, volume_now["supported"] = device.get("volume_percent"), device.get("supports_volume", True)
@@ -509,10 +523,10 @@ def volume_loop(step):
                 hub.update(volume_error=VOLUME_REFUSED)
                 hub.show("Volume not allowed")
                 continue
-            if base is None:
+            if base is None and absolute is None:
                 hub.show("Nothing is playing")
                 continue
-            percent = max(0, min(100, base + steps * step))
+            percent = max(0, min(100, (absolute if absolute is not None else base) + steps * step))
             with sp_lock:
                 sp.volume(percent)
             volume_change["sent"], volume_change["sent_at"] = percent, time.time()
@@ -2165,6 +2179,8 @@ def main():
         threading.Thread(target=navigator["nav"].loop, name="navigation", daemon=True).start()
         print("[dashboard] navigation on (Mapbox)")
     threading.Thread(target=volume_loop, args=(int(cfg["volume_step"]),), name="volume", daemon=True).start()
+    if cfg["volume_sensor"]:
+        start_plugin("volume_sensor", set_volume, cfg)
     if not args.no_voice:
         start_plugin("voice", trigger, play_song, hub.show, cfg["wake_phrase"], listen_now,
                      lambda state: hub.update(voice_state=state), navigate, assist,

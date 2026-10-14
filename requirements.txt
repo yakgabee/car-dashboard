@@ -25,3 +25,7 @@ numpy
 vosk
 sounddevice
 piper-tts
+
+# Volume sensor (volume_sensor.py, Raspberry Pi only; install.sh adds these on a Pi)
+# gpiozero
+# lgpio
