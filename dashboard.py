@@ -30,7 +30,6 @@ GESTURES
         2 fingers right -> next    2 fingers left -> previous
         Peace sign -> switch between hands-free and on-screen buttons
         L (thumb + index finger) -> lyrics page on / off
-        Index finger up -> Claude page, listening
         Thumbs up -> volume up     Thumbs down -> volume down   ("volume_step" in config.json)
     Test the camera on its own, with a preview window:  python3 gestures.py
 
@@ -262,13 +261,6 @@ def gesture_trigger(action):
         return True
     if action == "lyrics":          # the L: lyrics page on / off; works in buttons mode too
         return trigger("toggle_view")
-    if action == "claude":          # index finger up: Claude page, listening (like its talk button)
-        trigger("assistant")
-        if hub.get("voice_state") == "idle":     # not while listening already: a second set would cancel
-            listen_now.set()
-        elif hub.get("voice_state") == "off":
-            hub.show("Voice is off")
-        return True
     if hub.get("control_mode") == "buttons":
         return False
     return trigger(action)

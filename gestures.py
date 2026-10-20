@@ -7,7 +7,6 @@
     2 fingers (index/middle) left       -> previous
     Peace sign (2 fingers up)           -> switch hands-free / on-screen buttons
     L (thumb out + index finger up)     -> lyrics page on / off
-    Index finger up (thumb in)          -> Claude page, start listening
     Thumbs up                           -> volume up (one step)
     Thumbs down                         -> volume down (one step)
 
@@ -93,17 +92,14 @@ def thumb_vertical(lm):
 
 
 def classify(lm):
-    """Return 'play', 'pause', 'next', 'previous', 'peace', 'lyrics', 'claude', 'volume_up',
+    """Return 'play', 'pause', 'next', 'previous', 'peace', 'lyrics', 'volume_up',
     'volume_down' or None for 21 landmarks."""
     ext = {name: finger_extended(lm, name) for name in FINGERS}
 
     if ext["index"] and not ext["middle"] and not ext["ring"] and not ext["pinky"]:
         if thumb_out(lm):
             return "lyrics"     # an L: index finger and thumb out, the rest curled
-        dx = lm[8].x - lm[INDEX_MCP].x
-        dy = lm[8].y - lm[INDEX_MCP].y
-        if -dy > abs(dx) * 1.2:  # index finger alone, pointing up (image y grows downward)
-            return "claude"
+        return None             # index finger alone: nothing
 
     if not any(ext.values()):
         return thumb_vertical(lm) or "pause"
