@@ -309,6 +309,15 @@ background threads do the work so a slow network call never freezes the screen.
   the flag when it starts, so the next boot runs normally. Without start.sh
   (PC) it just stops the server; the page says "Dashboard closed". Tested
   with start.sh + a stand-in Chromium: Cancel, Exit, nothing restarted.
+- `uninstall.sh` (owner asked): asks "Type yes" (or `--yes`), refuses unless
+  its folder holds dashboard.py and isn't / or $HOME, writes the exit flag,
+  `pkill -f start.sh` (both its shells, so the restart loop dies too),
+  dashboard.py and the kiosk Chromium, removes the autostart .desktop entry,
+  `raspi-config nonint do_blanking 0`, then `rm -rf` the whole folder
+  (config.json, Spotify token, certs, .venv, models, logs). Body is in
+  `main` so bash has read it all before the file is deleted. Leaves apt
+  packages, uv's Python and the phone's CA alone. Tested in the sandbox with
+  a running start.sh --demo: everything stopped, nothing restarted, folder gone.
 - `requirements.txt` lists every pip package (`pip install -r requirements.txt`).
   `install.sh` (owner asked) does the whole setup: apt (python3-venv,
   python3-dev, libportaudio2, libgl1, libegl1, libgles2, curl, Chromium if missing), `.venv`,
